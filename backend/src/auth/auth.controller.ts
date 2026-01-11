@@ -52,18 +52,6 @@ export class AuthController {
     };
   }
 
-  @UseGuards(AccessTokenGuard)
-  @Post('logout')
-  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new UnauthorizedException('User no longer exists');
-    }
-    await this.authService.logout(userId);
-    this.cookieService.clearAuthCookies(res);
-    return { message: 'Logged out successfully' };
-  }
-
   @UseGuards(RefreshTokenGuard)
   @Post('refresh')
   async refreshTokens(
@@ -81,5 +69,27 @@ export class AuthController {
     });
     this.cookieService.setAuthCookies(res, refreshToken);
     return { accessToken };
+  }
+
+  @Post('me')
+  async getProfile(@Req() req: Request) {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('User no longer exist');
+    }
+    const result = await this.authService.getProfile(userId);
+    return result;
+  }
+
+  @UseGuards(AccessTokenGuard)
+  @Post('logout')
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('User no longer exists');
+    }
+    await this.authService.logout(userId);
+    this.cookieService.clearAuthCookies(res);
+    return { message: 'Logged out successfully' };
   }
 }

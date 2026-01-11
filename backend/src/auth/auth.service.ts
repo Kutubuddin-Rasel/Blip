@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma.service';
 import { PasswordService } from 'src/auth/services/password.service';
-import { SafeUser } from 'src/auth/types/safe-user.interface';
+import {
+  SafeUser,
+  tokens,
+  UserProfile,
+} from 'src/auth/types/safe-user.interface';
 import { SignInDto } from 'src/auth/dto/signin.dto';
 import { SignUpDto } from 'src/auth/dto/signup.dto';
 import { JwtPayload, VerifiedUser } from './types/jwt-request-uset.interface';
@@ -148,9 +152,24 @@ export class AuthService {
     };
   }
 
-  async refreshTokens(payload: JwtPayload) {
+  async refreshTokens(payload: JwtPayload): Promise<tokens> {
     const { accessToken, refreshToken } = await this.getTokens(payload);
     await this.updateRefreshToken(payload.sub, refreshToken);
     return { accessToken, refreshToken };
+  }
+
+  async getProfile(userId: string): Promise<UserProfile> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user) {
+      throw new UnauthorizedException('User no longer exist');
+    }
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      avatar: user.avatar,
+    };
   }
 }

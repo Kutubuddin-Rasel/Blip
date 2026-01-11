@@ -1,10 +1,20 @@
-export interface SafeUser {
+export interface tokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface SafeUser extends tokens {
   user: {
     id: string;
     name: string;
     email: string;
     avatar: string | null;
   };
-  accessToken: string;
-  refreshToken: string;
+}
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
 }
