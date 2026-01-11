@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: blip_db
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    networks:
+      - blip_network
+    ports:
+      - "${DATABASE_PORT}:5432"
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:8.4
+    container_name: blip_redis
+    env_file:
+      - ./backend/.env
+    networks:
+      - blip_network
+    ports:
+      - "${REDIS_PORT}:6379"
+    restart: always
+    command: redis-server --save 20 1 --loglevel warning --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  blip_network:
+    driver: bridge
