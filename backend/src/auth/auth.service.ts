@@ -6,17 +6,17 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma.service';
 import { PasswordService } from 'src/auth/services/password.service';
-import {
-  SafeUser,
-  tokens,
-  UserProfile,
-} from 'src/auth/types/safe-user.interface';
 import { SignInDto } from 'src/auth/dto/signin.dto';
 import { SignUpDto } from 'src/auth/dto/signup.dto';
-import { JwtPayload, VerifiedUser } from './types/jwt-request-uset.interface';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { StringValue } from 'ms';
+import {
+  AuthUser,
+  JwtPayload,
+  SafeUser,
+  tokens,
+} from '../interfaces/AuthUser.interface';
 
 @Injectable()
 export class AuthService {
@@ -112,7 +112,7 @@ export class AuthService {
     }
   }
 
-  async validateUser(signInDto: SignInDto): Promise<VerifiedUser | null> {
+  async validateUser(signInDto: SignInDto): Promise<AuthUser | null> {
     const user = await this.prisma.user.findUnique({
       where: { email: signInDto.email.toLowerCase() },
     });
@@ -129,7 +129,7 @@ export class AuthService {
     if (!verifyPassword) {
       return null;
     }
-    const { hashedPassword, hashedRefreshToken, ...result } = user;
+    const { hashedPassword, hashedRefreshToken, createdAt, ...result } = user;
     return result;
   }
 
@@ -158,7 +158,7 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async getProfile(userId: string): Promise<UserProfile> {
+  async getProfile(userId: string): Promise<AuthUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });

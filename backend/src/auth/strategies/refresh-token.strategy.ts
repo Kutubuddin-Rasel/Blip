@@ -6,8 +6,9 @@ import { PasswordService } from '../services/password.service';
 import { Request } from 'express';
 import { CookieService } from '../services/cookie.service';
 import { StringValue } from 'ms';
-import { JwtPayload } from '../types/jwt-request-uset.interface';
+
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtPayload } from '../../interfaces/AuthUser.interface';
 
 @Injectable()
 export class RefreshTokenStrategy extends PassportStrategy(
