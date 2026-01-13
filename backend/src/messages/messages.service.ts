@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { PrismaService } from 'src/prisma.service';
+import { EventsGateway } from 'src/events/events.gateway';
 
 @Injectable()
 export class MessagesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventsGateway: EventsGateway,
+  ) {}
 
   async validateUserConversation(
     conversationId: string,
@@ -35,6 +39,8 @@ export class MessagesService {
         },
       },
     });
+
+    this.eventsGateway.server.to(conversationId).emit('newMessage', message);
 
     return message;
   }

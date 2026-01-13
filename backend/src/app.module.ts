@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 import { ConversationsModule } from './conversations/conversations.module';
 import { MessagesModule } from './messages/messages.module';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { MessagesModule } from './messages/messages.module';
     ConfigModule.forRoot({ isGlobal: true }),
     ConversationsModule,
     MessagesModule,
+    EventsModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],
