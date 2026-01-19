@@ -40,6 +40,11 @@ export class MessagesService {
       },
     });
 
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { lastMessageAt: new Date() },
+    });
+
     this.eventsGateway.server.to(conversationId).emit('newMessage', message);
 
     return message;

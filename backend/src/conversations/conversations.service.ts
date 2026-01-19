@@ -72,6 +72,7 @@ export class ConversationsService {
           orderBy: { createdAt: 'desc' },
         },
       },
+      orderBy: { lastMessageAt: 'desc' },
     });
     return conversations;
   }

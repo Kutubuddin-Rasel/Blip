@@ -7,6 +7,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ConversationsModule } from './conversations/conversations.module';
 import { MessagesModule } from './messages/messages.module';
 import { EventsModule } from './events/events.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { EventsModule } from './events/events.module';
     ConversationsModule,
     MessagesModule,
     EventsModule,
+    RedisModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],

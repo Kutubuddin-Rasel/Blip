@@ -25,7 +25,7 @@ export class AuthService {
     private readonly passwordService: PasswordService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async signUp(signUpDto: SignUpDto): Promise<SafeUser> {
     const existing = await this.prisma.user.findUnique({
