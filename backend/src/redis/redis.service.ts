@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
+import { CacheOptions } from 'src/interfaces/Redis.interface';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -50,6 +51,58 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     if (this.redis) {
       await this.redis.quit();
       console.log('Redis disconnected');
+    }
+  }
+
+  async get<T>(key: string): Promise<T | null> {
+    if (!this.isConnected) {
+      console.warn('Redis not connected');
+      return null;
+    }
+    const data = await this.redis.get(key);
+    if (!data) {
+      return null;
+    }
+    try {
+      return JSON.parse(data) as T;
+    } catch {
+      console.warn('Error getting cache');
+      return null;
+    }
+  }
+
+  async set<T>(key: string, value: T, options: CacheOptions): Promise<boolean> {
+    if (!this.isConnected) {
+      console.warn('Redis not connected');
+      return false;
+    }
+    const data = JSON.stringify(value);
+    let result: 'OK' | null;
+
+    try {
+      if (options?.ttl) {
+        result = await this.redis.setex(key, options.ttl, data);
+      } else {
+        result = await this.redis.set(key, data);
+      }
+      return result === 'OK';
+    } catch {
+      console.warn('Error setting cache');
+      return false;
+    }
+  }
+
+  async del(key: string): Promise<boolean> {
+    if (!this.isConnected) {
+      console.warn('Redis not connected');
+      return false;
+    }
+    try {
+      const result = await this.redis.del(key);
+      return result > 0;
+    } catch {
+      console.warn('Error deleting cache');
+      return false;
     }
   }
 }

@@ -17,6 +17,8 @@ import {
   SafeUser,
   tokens,
 } from '../interfaces/AuthUser.interface';
+import { RedisService } from 'src/redis/redis.service';
+import { CacheOptions } from 'src/interfaces/Redis.interface';
 
 @Injectable()
 export class AuthService {
@@ -25,7 +27,8 @@ export class AuthService {
     private readonly passwordService: PasswordService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) { }
+    private readonly redisService: RedisService,
+  ) {}
 
   async signUp(signUpDto: SignUpDto): Promise<SafeUser> {
     const existing = await this.prisma.user.findUnique({
@@ -94,6 +97,8 @@ export class AuthService {
       where: { id: userId },
       data: { hashedRefreshToken: null },
     });
+
+    await this.redisService.del(`userId:${userId}`);
   }
 
   async updateRefreshToken(
@@ -159,17 +164,34 @@ export class AuthService {
   }
 
   async getProfile(userId: string): Promise<AuthUser> {
+    const data = await this.redisService.get<AuthUser>(`userId:${userId}`);
+    if (data) {
+      return data;
+    }
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
     if (!user) {
       throw new UnauthorizedException('User no longer exist');
     }
-    return {
+    const key = `userId:${userId}`;
+    const options: CacheOptions = {
+      ttl: 36000,
+    };
+    const userData = {
       id: user.id,
       name: user.name,
       email: user.email,
       avatar: user.avatar,
     };
+    const setUser = await this.redisService.set<AuthUser>(
+      key,
+      userData,
+      options,
+    );
+    if (!setUser) {
+      console.warn('Error while setting user profile data');
+    }
+    return userData;
   }
 }

@@ -7,9 +7,10 @@ import { CookieService } from './services/cookie.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { PrismaService } from 'src/prisma.service';
 import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
+import { RedisModule } from 'src/redis/redis.module';
 
 @Module({
-  imports: [JwtModule.register({})],
+  imports: [JwtModule.register({}), RedisModule],
   controllers: [AuthController],
   providers: [
     AuthService,
