@@ -71,6 +71,7 @@ export class AuthController {
     return { accessToken };
   }
 
+  @UseGuards(AccessTokenGuard)
   @Post('me')
   async getProfile(@Req() req: Request) {
     const userId = req.user?.id;
