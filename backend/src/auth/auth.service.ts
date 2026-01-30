@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   InternalServerErrorException,
@@ -19,6 +20,7 @@ import {
 } from '../interfaces/AuthUser.interface';
 import { RedisService } from 'src/redis/redis.service';
 import { CacheOptions } from 'src/interfaces/Redis.interface';
+import { FirebaseService } from 'src/firebase/firebase.service';
 
 @Injectable()
 export class AuthService {
@@ -28,27 +30,41 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
+    private readonly firebaseService: FirebaseService,
   ) {}
 
+  async verifyIdToken(idToken: string) {
+    try {
+      const decodedToken = await this.firebaseService
+        .getAuth()
+        .verifyIdToken(idToken);
+      return decodedToken;
+    } catch {
+      throw new UnauthorizedException('Invalid firebase token');
+    }
+  }
   async signUp(signUpDto: SignUpDto): Promise<SafeUser> {
+    const decodedToken = await this.verifyIdToken(signUpDto.idToken);
+    if (!decodedToken.phone_number) {
+      throw new BadRequestException('Phone number is required for signup');
+    }
     const existing = await this.prisma.user.findUnique({
-      where: { email: signUpDto.email.toLowerCase() },
+      where: { phoneNumber: decodedToken.phone_number },
     });
 
     if (existing) {
-      throw new ConflictException('Email already in use');
+      throw new ConflictException('Number is already in use');
     }
-    const hash = await this.passwordService.hash(signUpDto.password);
+
     const user = await this.prisma.user.create({
       data: {
-        email: signUpDto.email.toLowerCase(),
-        hashedPassword: hash,
+        phoneNumber: decodedToken.phone_number,
         name: signUpDto.name,
         avatar: signUpDto.avatar ?? null,
       },
       select: {
         id: true,
-        email: true,
+        phoneNumber: true,
         name: true,
         avatar: true,
       },
@@ -70,12 +86,28 @@ export class AuthService {
     };
   }
 
-  async signIn(signInDto: SignInDto): Promise<SafeUser> {
-    const user = await this.validateUser(signInDto);
-    if (user == null) {
-      throw new UnauthorizedException('Email or password is incorrect');
+  async validateUser(signInDto: SignInDto): Promise<AuthUser | null> {
+    const decodedToken = await this.verifyIdToken(signInDto.idToken);
+    if (!decodedToken.phone_number) {
+      throw new UnauthorizedException('Invalid phone number');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { phoneNumber: decodedToken.phone_number },
+    });
+
+    if (!user) {
+      return null;
     }
 
+    const { hashedRefreshToken, createdAt, ...result } = user;
+    return result;
+  }
+
+  async signIn(signInDto: SignInDto): Promise<SafeUser> {
+    const user = await this.validateUser(signInDto);
+    if (!user) {
+      throw new UnauthorizedException('Phone number is invalid');
+    }
     const { accessToken, refreshToken } = await this.getTokens({
       sub: user.id,
       username: user.name,
@@ -115,27 +147,6 @@ export class AuthService {
     } catch {
       return false;
     }
-  }
-
-  async validateUser(signInDto: SignInDto): Promise<AuthUser | null> {
-    const user = await this.prisma.user.findUnique({
-      where: { email: signInDto.email.toLowerCase() },
-    });
-
-    if (!user) {
-      return null;
-    }
-
-    const verifyPassword = await this.passwordService.verify(
-      signInDto.password,
-      user.hashedPassword,
-    );
-
-    if (!verifyPassword) {
-      return null;
-    }
-    const { hashedPassword, hashedRefreshToken, createdAt, ...result } = user;
-    return result;
   }
 
   async getTokens(payload: JwtPayload) {
@@ -181,7 +192,7 @@ export class AuthService {
     const userData = {
       id: user.id,
       name: user.name,
-      email: user.email,
+      phoneNumber: user.phoneNumber,
       avatar: user.avatar,
     };
     const setUser = await this.redisService.set<AuthUser>(

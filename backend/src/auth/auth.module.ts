@@ -8,9 +8,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { PrismaService } from 'src/prisma.service';
 import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
 import { RedisModule } from 'src/redis/redis.module';
+import { FirebaseModule } from 'src/firebase/firebase.module';
 
 @Module({
-  imports: [JwtModule.register({}), RedisModule],
+  imports: [JwtModule.register({}), RedisModule, FirebaseModule],
   controllers: [AuthController],
   providers: [
     AuthService,

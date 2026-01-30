@@ -1,0 +1,15 @@
+# npm audit report
+
+next  15.6.0-canary.0 - 16.1.4
+Severity: high
+Next.js self-hosted applications vulnerable to DoS via Image Optimizer remotePatterns configuration - https://github.com/advisories/GHSA-9g9p-9gw9-jx7f
+Next.js has Unbounded Memory Consumption via PPR Resume Endpoint  - https://github.com/advisories/GHSA-5f7q-jpqc-wp7h
+Next.js HTTP request deserialization can lead to DoS when using insecure React Server Components - https://github.com/advisories/GHSA-h25m-26qc-wcjf
+fix available via `npm audit fix --force`
+Will install next@16.1.6, which is outside the stated dependency range
+node_modules/next
+
+1 high severity vulnerability
+
+To address all issues, run:
+  npm audit fix --force

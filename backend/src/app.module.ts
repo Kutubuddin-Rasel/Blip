@@ -8,6 +8,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { MessagesModule } from './messages/messages.module';
 import { EventsModule } from './events/events.module';
 import { RedisModule } from './redis/redis.module';
+import { FirebaseModule } from './firebase/firebase.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { RedisModule } from './redis/redis.module';
     MessagesModule,
     EventsModule,
     RedisModule,
+    FirebaseModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],
