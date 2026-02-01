@@ -1,3 +1,5 @@
+import { RefreshResponse } from "@/interface/axiosInterface";
+import api from "@/lib/api";
 import { auth } from "@/lib/firebase";
 import { useAuthStore } from "@/store/useAuthStore";
 import axios from "axios";
@@ -14,11 +16,7 @@ export function useAuth() {
           setUser(firebaseUser);
 
           try {
-            const { data } = await axios.post(
-              `${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/refresh`,
-              {},
-              { withCredentials: true },
-            );
+            const { data } = await api.post<RefreshResponse>("auth/refresh");
             setToken(data.accessToken);
           } catch (error) {
             console.error("Backend refresh failed", error);
