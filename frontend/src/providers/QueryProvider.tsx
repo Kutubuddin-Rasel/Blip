@@ -14,6 +14,7 @@ export default function QueryProvider({
         defaultOptions: {
           queries: {
             staleTime: 60 * 1000,
+            gcTime: 5 * 60 * 100,
             refetchOnWindowFocus: false,
           },
         },

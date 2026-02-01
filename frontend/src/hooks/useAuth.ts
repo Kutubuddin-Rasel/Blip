@@ -1,0 +1,39 @@
+import { auth } from "@/lib/firebase";
+import { useAuthStore } from "@/store/useAuthStore";
+import axios from "axios";
+import { onIdTokenChanged } from "firebase/auth";
+import { useEffect } from "react";
+
+export function useAuth() {
+  const { setUser, setToken, setLoading } = useAuthStore();
+
+  useEffect(() => {
+    const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
+      try {
+        if (firebaseUser) {
+          setUser(firebaseUser);
+
+          try {
+            const { data } = await axios.post(
+              `${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/refresh`,
+              {},
+              { withCredentials: true },
+            );
+            setToken(data.accessToken);
+          } catch (error) {
+            console.error("Backend refresh failed", error);
+            setToken(null);
+          }
+        } else {
+          setUser(null);
+          setToken(null);
+        }
+      } catch (error) {
+        console.error("Auth async error", error);
+      } finally {
+        setLoading(false);
+      }
+    });
+    return () => unsubscribe();
+  }, [setUser, setToken, setLoading]);
+}
