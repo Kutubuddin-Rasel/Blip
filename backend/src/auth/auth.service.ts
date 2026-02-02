@@ -4,6 +4,7 @@ import {
   Injectable,
   InternalServerErrorException,
   UnauthorizedException,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma.service';
 import { PasswordService } from 'src/auth/services/password.service';
@@ -31,7 +32,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
     private readonly firebaseService: FirebaseService,
-  ) {}
+  ) { }
 
   async verifyIdToken(idToken: string) {
     try {
@@ -106,7 +107,7 @@ export class AuthService {
   async signIn(signInDto: SignInDto): Promise<SafeUser> {
     const user = await this.validateUser(signInDto);
     if (!user) {
-      throw new UnauthorizedException('Phone number is invalid');
+      throw new NotFoundException('User not registered');
     }
     const { accessToken, refreshToken } = await this.getTokens({
       sub: user.id,

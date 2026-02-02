@@ -13,7 +13,12 @@ import { JwtPayload } from 'src/interfaces/AuthUser.interface';
 import { SocketAuth, SocketData } from 'src/interfaces/Socket.interface';
 import { PrismaService } from 'src/prisma.service';
 
-@WebSocketGateway({ cors: { origin: process.env.NEXT_PUBLIC_FRONTEND_URL } })
+@WebSocketGateway({
+  cors: {
+    origin: process.env.NEXT_PUBLIC_FRONTEND_URL,
+    credentials: true,
+  },
+})
 export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly jwtService: JwtService,

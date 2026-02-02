@@ -7,7 +7,7 @@ import axios, {
 } from "axios";
 
 const api = axios.create({
-  baseURL: process.env.NEST_PUBLIC_BACKEND_URL,
+  baseURL: process.env.NEXT_PUBLIC_BACKEND_URL,
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
@@ -61,6 +61,7 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
     }
+    return Promise.reject(error);
   },
 );
 

@@ -1,4 +1,4 @@
-import { RecaptchaVerifier } from "firebase/auth/web-extension";
+import { RecaptchaVerifier } from "firebase/auth";
 
 declare global{
     interface Window{

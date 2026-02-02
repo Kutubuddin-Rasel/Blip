@@ -1,3 +1,6 @@
+import { AxiosResponse } from "axios";
+import { User } from "firebase/auth";
+
 export interface RefreshResponse {
   accessToken: string;
 }
@@ -10,4 +13,9 @@ export interface LoginResponse {
     avatar: string | null;
   };
   accessToken: string;
+}
+
+export interface AuthSuccessResult {
+  response: AxiosResponse<LoginResponse>;
+  firebaseUser: User;
 }
