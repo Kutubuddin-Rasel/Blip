@@ -2,7 +2,6 @@ import { RefreshResponse } from "@/interface/axiosInterface";
 import api from "@/lib/api";
 import { auth } from "@/lib/firebase";
 import { useAuthStore } from "@/store/useAuthStore";
-import axios from "axios";
 import { onIdTokenChanged } from "firebase/auth";
 import { useEffect } from "react";
 
