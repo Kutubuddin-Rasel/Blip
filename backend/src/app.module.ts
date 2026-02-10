@@ -9,6 +9,7 @@ import { MessagesModule } from './messages/messages.module';
 import { EventsModule } from './events/events.module';
 import { RedisModule } from './redis/redis.module';
 import { FirebaseModule } from './firebase/firebase.module';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { FirebaseModule } from './firebase/firebase.module';
     EventsModule,
     RedisModule,
     FirebaseModule,
+    UserModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],

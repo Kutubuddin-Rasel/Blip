@@ -19,13 +19,7 @@ const PhoneInputShadcn = React.forwardRef<HTMLInputElement, PhoneInputProps>(
         country="BD"
         international
         withCountryCallingCode
-        inputComponent={React.forwardRef((inputProps, inputRef) => (
-          <Input
-            {...inputProps}
-            ref={inputRef}
-            className={cn("font-mono", className)}
-          />
-        ))}
+        inputComponent={InputComponent}
         value={value}
         onChange={onChange}
         ref={ref}
@@ -34,6 +28,17 @@ const PhoneInputShadcn = React.forwardRef<HTMLInputElement, PhoneInputProps>(
     );
   },
 );
+
+const InputComponent = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
+  ({ className, ...props }, ref) => (
+    <Input
+      className={cn("font-mono", className)}
+      {...props}
+      ref={ref}
+    />
+  ),
+);
+InputComponent.displayName = "InputComponent";
 
 PhoneInputShadcn.displayName = "PhoneInputShadcn";
 export { PhoneInputShadcn };

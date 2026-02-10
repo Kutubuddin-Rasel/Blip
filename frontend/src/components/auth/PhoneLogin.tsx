@@ -1,5 +1,5 @@
 "use client";
-import { LoginResponse } from "@/interface/axiosInterface";
+import { LoginResponse } from "@/interface/Auth.interface";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConfirmationResult, signInWithPhoneNumber, User } from "firebase/auth";

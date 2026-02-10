@@ -1,4 +1,4 @@
-import { AuthSuccessResult, LoginResponse } from "@/interface/axiosInterface";
+import { AuthSuccessResult, LoginResponse } from "@/interface/Auth.interface";
 import api from "@/lib/api";
 import { auth } from "@/lib/firebase";
 import { ConfirmationResult, signInWithPhoneNumber } from "firebase/auth";

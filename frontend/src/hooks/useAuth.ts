@@ -1,4 +1,4 @@
-import { RefreshResponse } from "@/interface/axiosInterface";
+import { RefreshResponse } from "@/interface/Auth.interface";
 import api from "@/lib/api";
 import { auth } from "@/lib/firebase";
 import { useAuthStore } from "@/store/useAuthStore";

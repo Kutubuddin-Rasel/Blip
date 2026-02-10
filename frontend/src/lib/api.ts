@@ -1,4 +1,4 @@
-import { RefreshResponse } from "@/interface/axiosInterface";
+import { RefreshResponse } from "@/interface/Auth.interface";
 import { useAuthStore } from "@/store/useAuthStore";
 import axios, {
   AxiosError,
