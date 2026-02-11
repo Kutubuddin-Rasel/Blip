@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Query,
   Req,
   UnauthorizedException,
@@ -13,12 +14,17 @@ import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
+  @Get()
   @UseGuards(AccessTokenGuard)
-  async findAll(@Req() req: Request, @Query('search') search: string) {
+  async findAll(
+    @Req() req: Request,
+    @Query('search') search: string,
+    @Query('cursor') cursor: string,
+  ) {
     const userId = req.user?.id;
     if (!userId) {
       throw new UnauthorizedException('User no longer exists');
     }
-    return this.userService.findAll(userId, search);
+    return this.userService.findAll(userId, search, cursor);
   }
 }

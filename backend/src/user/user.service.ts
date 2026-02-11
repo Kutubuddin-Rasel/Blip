@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { AuthUser } from 'src/interfaces/AuthUser.interface';
 import { PrismaService } from 'src/prisma.service';
 
 @Injectable()
 export class UserService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(currentUserId: string, query?: string): Promise<AuthUser[]> {
+  async findAll(currentUserId: string, query?: string, cursor?: string) {
+    const limit = 20;
     const users = await this.prisma.user.findMany({
       where: {
         id: { not: currentUserId },
@@ -23,8 +23,22 @@ export class UserService {
         avatar: true,
         phoneNumber: true,
       },
-      take: 20,
+      take: limit + 1,
+      cursor: cursor ? { id: cursor } : undefined,
+      skip: cursor ? 1 : 0,
+      orderBy: { name: 'asc' },
     });
-    return users;
+
+    let nextCursor: null | string = null;
+    if (users.length > limit) {
+      const nextItem = users.pop();
+      if (nextItem) {
+        nextCursor = nextItem.id;
+      }
+    }
+    return {
+      items: users,
+      nextCursor,
+    };
   }
 }

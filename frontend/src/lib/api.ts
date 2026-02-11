@@ -56,8 +56,7 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (error) {
         useAuthStore.getState().logOut();
-        window.location.href = "auth/login";
-
+          window.location.href = "auth/login";
         return Promise.reject(error);
       }
     }

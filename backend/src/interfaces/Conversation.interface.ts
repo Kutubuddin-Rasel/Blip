@@ -1,6 +1,7 @@
 export interface CreatedConversation {
   id: string;
   name: string | null;
+  lastMessageAt: Date;
 }
 
 export interface Conversation extends CreatedConversation {

@@ -6,13 +6,25 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { UserIcon } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ChatService } from "@/services/chat.service";
+import NewChatDialog from "./NewChatDialog";
 
-export default function ChatSidebar({ conversations }: ChatSidebarProps) {
+export default function ChatSidebar({
+  initialConversations,
+}: ChatSidebarProps) {
   const pathName = usePathname();
-
+  const { data: conversations } = useQuery({
+    queryKey: ["conversations"],
+    queryFn: () => ChatService.getConversations(),
+    initialData: initialConversations,
+  });
   return (
     <div className="w-80 border-r h-full flex flex-col bg-zinc-50 dark:bg-zinc-900">
-      <div className="p-4 border-b font-bold text-xl">Chats</div>
+      <div className="p-4 border-b flex items-center justify-between">
+        <div className="p-4 border-b font-bold text-xl">Chats</div>
+        <NewChatDialog />
+      </div>
       <div className="flex-1 overflow-y-auto">
         {conversations.length === 0 ? (
           <div className="p-4 text-zinc-500 text-center text-sm">
