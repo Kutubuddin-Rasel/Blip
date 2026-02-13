@@ -54,9 +54,8 @@ export default function PhoneLogin() {
 
   const handleAuthSuccess = (
     response: AxiosResponse<LoginResponse>,
-    firebaseUser: User,
   ) => {
-    setUser(firebaseUser);
+    setUser(response.data.user);
     setToken(response.data.accessToken);
     queryClient.setQueryData(["profile"], response.data.user);
     router.push("/chat");
@@ -66,8 +65,8 @@ export default function PhoneLogin() {
     if (!confirmResult || !otp) return;
     setLoading(true);
     try {
-      const { response, firebaseUser } = await AuthService.verifyAndLogin(confirmResult, otp);
-      handleAuthSuccess(response, firebaseUser);
+      const { response } = await AuthService.verifyAndLogin(confirmResult, otp);
+      handleAuthSuccess(response);
     } catch (err) {
       const error = err as AxiosError;
       if (error.response?.status === 404) {
@@ -85,8 +84,8 @@ export default function PhoneLogin() {
     if (!name) return;
     setLoading(true);
     try {
-      const { response, firebaseUser } = await AuthService.register(name);
-      handleAuthSuccess(response, firebaseUser);
+      const { response } = await AuthService.register(name);
+      handleAuthSuccess(response);
     } catch (error) {
       console.error("Registration failed", error);
       alert("Registration failed");

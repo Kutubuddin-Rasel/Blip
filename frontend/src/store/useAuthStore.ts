@@ -1,4 +1,4 @@
-import { User } from "firebase/auth";
+import { User } from "@/interface/Auth.interface";
 import { create } from "zustand";
 
 interface AuthState {

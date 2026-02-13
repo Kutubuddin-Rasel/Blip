@@ -10,11 +10,11 @@ export interface JwtPayload {
   username: string;
 }
 
-export interface tokens {
+export interface Tokens {
   accessToken: string;
   refreshToken: string;
 }
 
-export interface SafeUser extends tokens {
+export interface SafeUser extends Tokens {
   user: AuthUser;
 }

@@ -46,11 +46,11 @@ api.interceptors.response.use(
 
       try {
         const refreshResponse = await api.post<RefreshResponse>("auth/refresh");
-        const newAccessToken = refreshResponse.data.accessToken;
-        useAuthStore.getState().setToken(newAccessToken);
-
+        const {accessToken,user} = refreshResponse.data;
+        useAuthStore.getState().setToken(accessToken);
+        useAuthStore.getState().setUser(user)
         if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         }
 
         return api(originalRequest);

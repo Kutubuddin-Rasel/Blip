@@ -1,3 +1,9 @@
+export interface Message {
+  id: string;
+  createdAt: Date;
+  content: string;
+  userId: string;
+}
 export interface Conversation {
   id: string;
   name: string | null;
@@ -41,4 +47,12 @@ export interface ChatAreaProps {
   conversation?: Conversation;
   draftUserId: string | null;
   userName: string | null;
+}
+
+export interface ChatInputProps {
+  onSend: (text: string) => void;
+  disable: boolean;
+}
+export interface ChatListProps{
+  messages:Message[]
 }

@@ -33,8 +33,7 @@ export const AuthService = {
     const idToken = await firebaseUser.getIdToken();
     const response = await api.post<LoginResponse>("auth/signin", { idToken });
     return {
-      response,
-      firebaseUser,
+      response
     };
   },
 
@@ -46,8 +45,7 @@ export const AuthService = {
     const idToken = await firebaseUser.getIdToken();
     const response = await api.post("auth/signup", { idToken, name });
     return {
-      response,
-      firebaseUser
+      response
     };
   },
 };

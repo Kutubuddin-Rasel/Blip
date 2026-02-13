@@ -17,7 +17,6 @@ import {
   AuthUser,
   JwtPayload,
   SafeUser,
-  tokens,
 } from '../interfaces/AuthUser.interface';
 import { RedisService } from 'src/redis/redis.service';
 import { CacheOptions } from 'src/interfaces/Redis.interface';
@@ -32,7 +31,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
     private readonly firebaseService: FirebaseService,
-  ) { }
+  ) {}
 
   async verifyIdToken(idToken: string) {
     try {
@@ -137,16 +136,24 @@ export class AuthService {
   async updateRefreshToken(
     userId: string,
     refreshToken: string,
-  ): Promise<boolean> {
+  ): Promise<AuthUser> {
     try {
       const hashRefreshToken = await this.passwordService.hash(refreshToken);
-      await this.prisma.user.update({
+      const user = await this.prisma.user.update({
         where: { id: userId },
         data: { hashedRefreshToken: hashRefreshToken },
+        select: {
+          id: true,
+          phoneNumber: true,
+          name: true,
+          avatar: true,
+        },
       });
-      return true;
+      return user;
     } catch {
-      return false;
+      throw new InternalServerErrorException(
+        'Internal server error while updating refresh token',
+      );
     }
   }
 
@@ -169,10 +176,14 @@ export class AuthService {
     };
   }
 
-  async refreshTokens(payload: JwtPayload): Promise<tokens> {
-    const { accessToken, refreshToken } = await this.getTokens(payload);
-    await this.updateRefreshToken(payload.sub, refreshToken);
-    return { accessToken, refreshToken };
+  async refreshTokens(payload: JwtPayload): Promise<SafeUser> {
+    try {
+      const { accessToken, refreshToken } = await this.getTokens(payload);
+      const user = await this.updateRefreshToken(payload.sub, refreshToken);
+      return { user, accessToken, refreshToken };
+    } catch {
+      throw new UnauthorizedException('User no longer exist');
+    }
   }
 
   async getProfile(userId: string): Promise<AuthUser> {

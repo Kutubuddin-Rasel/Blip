@@ -63,12 +63,13 @@ export class AuthController {
     if (!userId || !username) {
       throw new UnauthorizedException('User no longer exists');
     }
-    const { accessToken, refreshToken } = await this.authService.refreshTokens({
-      sub: userId,
-      username,
-    });
+    const { user, accessToken, refreshToken } =
+      await this.authService.refreshTokens({
+        sub: userId,
+        username,
+      });
     this.cookieService.setAuthCookies(res, refreshToken);
-    return { accessToken };
+    return { user, accessToken };
   }
 
   @UseGuards(AccessTokenGuard)

@@ -1,3 +1,4 @@
+'use client';
 import {
   ChatAreaProps,
   Conversation,
@@ -6,36 +7,31 @@ import {
 import { ChatService } from "@/services/chat.service";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Input } from "../ui/input";
-import { Button } from "../ui/button";
+import ChatInput from "./ChatInput";
 
 export default function ChatArea({
   conversation,
   draftUserId,
   userName,
 }: ChatAreaProps) {
-  const [message, setMessage] = useState("");
   const queryClient = useQueryClient();
   const router = useRouter();
 
   const createMutation = useMutation({
-    mutationFn: async () => {
-      return ChatService.createConversation([draftUserId!], message);
+    mutationFn: async (text:string) => {
+      return ChatService.createConversation([draftUserId!], text);
     },
     onSuccess: (newConv: CreatedConversation) => {
       queryClient.setQueryData(["conversations"], (old: Conversation[]) => {
         return [newConv, ...(old || [])];
       });
-      setMessage("");
       router.push(`/chat/${newConv.id}`);
     },
   });
 
-  const handleSend = () => {
-    if (!message.trim()) return;
+  const handleSend = (text:string) => {
     if (draftUserId) {
-      createMutation.mutate();
+      createMutation.mutate(text);
     }
   };
 
@@ -46,17 +42,10 @@ export default function ChatArea({
           ? userName
           : conversation?.name || conversation?.users[0].name}
       </div>
-      <div className="p-4 border-t flex gap-2">
-        <Input
-          placeholder="Message"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend}
-        />
-        <Button onClick={handleSend} disabled={createMutation.isPending}>
-            Send
-        </Button>
+      <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
+        {/* MessageList */}
       </div>
+      <ChatInput onSend={handleSend}  disable={createMutation.isPending}/>
     </div>
   );
 }
