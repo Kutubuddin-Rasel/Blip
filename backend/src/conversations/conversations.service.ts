@@ -6,10 +6,10 @@ import {
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { PrismaService } from 'src/prisma.service';
 import {
+  Conversation,
   Conversations,
   CreatedConversation,
 } from 'src/interfaces/Conversation.interface';
-import { Conversation } from 'generated/prisma/client';
 
 @Injectable()
 export class ConversationsService {
@@ -65,6 +65,7 @@ export class ConversationsService {
             id: true,
             name: true,
             avatar: true,
+            phoneNumber: true,
           },
         },
         messages: {

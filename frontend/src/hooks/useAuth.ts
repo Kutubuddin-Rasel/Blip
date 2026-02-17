@@ -14,11 +14,9 @@ export function useAuth() {
       async (firebaseUser: FirebaseUser | null) => {
         try {
           if (firebaseUser) {
-            setUser(firebaseUser);
-
             try {
               const { data } = await api.post<RefreshResponse>("auth/refresh");
-              setUser(data.)
+              setUser(data.user);
               setToken(data.accessToken);
             } catch (error) {
               console.error("Backend refresh failed", error);

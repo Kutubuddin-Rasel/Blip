@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { UserIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { ChatService } from "@/services/chat.service";
+import { ChatService } from "@/services/conversation.service";
 import NewChatDialog from "./NewChatDialog";
 
 export default function ChatSidebar({

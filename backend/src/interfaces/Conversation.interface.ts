@@ -19,5 +19,6 @@ export interface Conversations extends Conversation {
     id: string;
     name: string;
     avatar: string | null;
+    phoneNumber: string;
   }[];
 }
