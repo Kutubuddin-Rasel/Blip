@@ -112,9 +112,7 @@ export default function ChatArea({
   }, [inView, hasNextPage]);
 
   const handleSend = (text: string) => {
-    if (draftUserId) {
-      createMutation.mutate(text);
-    }
+    createMutation.mutate(text);
   };
 
   const allMessages = messageData?.pages.flatMap((p) => p.items) || [];
