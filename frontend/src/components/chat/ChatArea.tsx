@@ -97,7 +97,17 @@ export default function ChatArea({
     enabled: !!conversationId,
     initialData: activeConversation
       ? {
-          pages: [{ items: activeConversation.messages, nextCursor: null }],
+          pages: [
+            {
+              items: activeConversation.messages,
+              nextCursor:
+                activeConversation.messages.length > 0
+                  ? activeConversation.messages[
+                      activeConversation.messages.length - 1
+                    ].id
+                  : null,
+            },
+          ],
           pageParams: [undefined],
         }
       : undefined,
