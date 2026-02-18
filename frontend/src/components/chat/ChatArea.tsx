@@ -21,6 +21,7 @@ import { useEffect } from "react";
 import { MessageResponse } from "@/interface/Message.interface";
 import ChatList from "./ChatList";
 import { socket } from "@/lib/socket";
+import { toast } from "sonner";
 
 export default function ChatArea({
   conversation,
@@ -107,6 +108,10 @@ export default function ChatArea({
         );
       }
     },
+    onError:(error)=>{
+      console.log("Message send filed: ",error);
+      toast.error("Message failed to send. Please try again.")
+    }
   });
 
   const { data: fetchedConversation } = useQuery({

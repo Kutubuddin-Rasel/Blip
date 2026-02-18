@@ -2,6 +2,7 @@ import AuthListener from "@/components/auth/AuthListener";
 import QueryProvider from "@/providers/QueryProvider";
 import "./globals.css";
 import { Metadata } from "next";
+import { Toaster } from "sonner";
 
 export const metadata:Metadata={
   title:"Blip",
@@ -19,6 +20,7 @@ export default function RootLayout({
         <QueryProvider>
           <AuthListener />
           {children}
+          <Toaster />
         </QueryProvider>
       </body>
     </html>
