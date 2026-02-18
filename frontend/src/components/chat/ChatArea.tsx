@@ -20,6 +20,7 @@ import { useInView } from "react-intersection-observer";
 import { useEffect } from "react";
 import { MessageResponse } from "@/interface/Message.interface";
 import ChatList from "./ChatList";
+import { socket } from "@/lib/socket";
 
 export default function ChatArea({
   conversation,
@@ -29,6 +30,46 @@ export default function ChatArea({
   const queryClient = useQueryClient();
   const router = useRouter();
   const conversationId = conversation ? conversation.id : null;
+
+  useEffect(() => {
+    if (conversationId && socket) {
+      socket.emit("joinConversation", conversationId);
+    }
+  }, [conversationId, socket]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleNewMessage = (newMessage: Message) => {
+      if (newMessage.conversationId != conversationId) return;
+      queryClient.setQueryData<InfiniteData<MessageResponse>>(
+        ["messages", conversationId],
+        (oldData) => {
+          if (!oldData) return undefined;
+          const alreadyEsixt = oldData.pages[0].items.some(
+            (m) => m.id === newMessage.id,
+          );
+          if (alreadyEsixt) {
+            return oldData;
+          }
+          const newPages = [...oldData.pages];
+          newPages[0] = {
+            ...newPages[0],
+            items: [newMessage, ...newPages[0].items],
+          };
+          return {
+            ...oldData,
+            pages: newPages,
+          };
+        },
+      );
+    };
+
+    socket.on("newMessage", handleNewMessage);
+    return () => {
+      socket.off("newMessage", handleNewMessage);
+    };
+  }, [socket, conversationId, queryClient]);
 
   const createMutation = useMutation({
     mutationFn: async (text: string) => {
