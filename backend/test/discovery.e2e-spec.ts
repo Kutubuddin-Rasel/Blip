@@ -170,6 +170,7 @@ describe('Exact recipient discovery (e2e)', () => {
       id: bobId,
       name: 'Bob',
       avatar: 'https://example.test/bob.png',
+      isDeleted: false,
     });
   });
 

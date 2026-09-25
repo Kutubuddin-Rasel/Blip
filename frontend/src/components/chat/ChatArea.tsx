@@ -21,6 +21,7 @@ import { isAxiosError } from "axios";
 import { useLayoutEffect } from "react";
 import ChatInput from "./ChatInput";
 import ChatList from "./ChatList";
+import { toast } from "sonner";
 
 export default function ChatArea(props: ChatAreaProps) {
   const queryClient = useQueryClient();
@@ -31,6 +32,17 @@ export default function ChatArea(props: ChatAreaProps) {
   const draftUserId = props.mode === "draft" ? props.draftUserId : null;
   const pendingDraft = useRef<{ recipientId: string; text: string; clientMessageId: string } | null>(null);
   const pendingSend = useRef<{ conversationId: string; text: string; clientMessageId: string } | null>(null);
+  const relationship = useMutation({
+    mutationFn: async (blocked: boolean) => {
+      if (props.mode !== "existing") throw new Error("Conversation unavailable");
+      if (blocked) await ChatService.blockPeer(props.conversation.peer.id);
+      else await ChatService.unblockPeer(props.conversation.peer.id);
+    },
+    onSuccess: () => {
+      if (accountId && conversationId) void queryClient.invalidateQueries({ queryKey: conversationKeys.detail(accountId, conversationId) });
+    },
+    onError: () => toast.error("Could not change the block. Please try again."),
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollAnchor = useRef<{ height: number; top: number; pageCount: number } | null>(null);
   const initialScrolledFor = useRef<string | null>(null);
@@ -67,6 +79,10 @@ export default function ChatArea(props: ChatAreaProps) {
       );
       void queryClient.invalidateQueries({ queryKey: conversationKeys.messages(accountId, message.conversationId) });
       void queryClient.invalidateQueries({ queryKey: conversationKeys.list(accountId) });
+    },
+    onError: (error) => {
+      if (accountId && conversationId && isAxiosError(error) && error.response?.status === 404)
+        void queryClient.invalidateQueries({ queryKey: conversationKeys.detail(accountId, conversationId) });
     },
   });
 
@@ -132,7 +148,7 @@ export default function ChatArea(props: ChatAreaProps) {
       ? "Server unavailable. Retry this draft to confirm whether it sent."
       : status === 409 ? "Message ID conflict. Edit the text to start a new send."
       : status === 401 ? "Session expired. Sign in again before sending."
-      : status === 404 ? "Conversation is unavailable."
+      : status === 404 ? "Messaging is unavailable."
       : "Message was not sent. Edit the text and try again." };
   })() : null;
   return (
@@ -140,6 +156,12 @@ export default function ChatArea(props: ChatAreaProps) {
       <div className="p-4 border-b font-bold flex items-center gap-3 min-w-0">
         <Link href="/chat" className="md:hidden" aria-label="Back to conversations"><ArrowLeft className="h-5 w-5" /></Link>
         <span className="truncate">{props.mode === "draft" ? props.userName : props.conversation.peer.name}</span>
+        {props.mode === "existing" && !props.conversation.peer.isDeleted && (props.conversation.canMessage || props.conversation.blockedByMe) && (
+          <button type="button" className="ml-auto text-sm underline shrink-0" disabled={relationship.isPending} onClick={() => {
+            if (props.conversation.blockedByMe) relationship.mutate(false);
+            else if (window.confirm(`Block ${props.conversation.peer.name}? You will both be unable to message each other until you unblock.`)) relationship.mutate(true);
+          }}>{props.conversation.blockedByMe ? "Unblock" : "Block"}</button>
+        )}
       </div>
       <div ref={scrollRef} className="flex-1 min-h-0 p-4 overflow-y-auto flex flex-col gap-4">
         <div ref={ref} className="h-1 shrink-0" />
@@ -155,6 +177,7 @@ export default function ChatArea(props: ChatAreaProps) {
         {history.isFetchingNextPage && <div className="text-center text-xs">Loading History...</div>}
         {(!conversationId || history.isSuccess || (history.isFetchNextPageError && !!history.data)) && <ChatList messages={messages} />}
       </div>
+      {props.mode === "existing" && !props.conversation.canMessage && <p className="border-t p-4 text-sm text-zinc-500">Messaging is unavailable.{props.conversation.blockedByMe && " Unblock to send messages again."}</p>}
       <ChatInput
         onSend={(text) => {
           if (draftUserId) {
@@ -171,7 +194,7 @@ export default function ChatArea(props: ChatAreaProps) {
           }
         }}
         onEdit={() => { pendingDraft.current = null; pendingSend.current = null; createConversation.reset(); sendMessage.reset(); }}
-        disable={!accountId || !token || createConversation.isPending || sendMessage.isPending}
+        disable={!accountId || !token || createConversation.isPending || sendMessage.isPending || relationship.isPending || (props.mode === "existing" && !props.conversation.canMessage)}
         clearOnSuccess
         failure={sendFailure}
       />

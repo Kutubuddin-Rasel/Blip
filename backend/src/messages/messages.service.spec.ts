@@ -4,6 +4,7 @@ import { MessagesService } from './messages.service';
 import { PrismaService } from 'src/prisma.service';
 import { EventsGateway } from 'src/events/events.gateway';
 import { directKey } from 'src/conversations/direct-key';
+import { RelationshipService } from 'src/relationship/relationship.service';
 
 describe('MessagesService membership', () => {
   let service: MessagesService;
@@ -16,6 +17,7 @@ describe('MessagesService membership', () => {
         MessagesService,
         { provide: PrismaService, useValue: { conversation: { findUnique } } },
         { provide: EventsGateway, useValue: {} },
+        { provide: RelationshipService, useValue: {} },
       ],
     }).compile();
 

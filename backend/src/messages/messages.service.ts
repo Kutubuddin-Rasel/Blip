@@ -11,6 +11,7 @@ import { PrismaService } from 'src/prisma.service';
 import { EventsGateway } from 'src/events/events.gateway';
 import type { Message, Page } from 'src/interfaces/Message.interface';
 import { isCanonicalDirect } from 'src/conversations/direct-key';
+import { RelationshipService } from 'src/relationship/relationship.service';
 
 const messageSelect = {
   id: true,
@@ -118,6 +119,7 @@ export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway,
+    private readonly relationships: RelationshipService,
   ) {}
 
   async validateUserConversation(
@@ -140,7 +142,7 @@ export class MessagesService {
     let row: MessageRow;
     let inserted = false;
     try {
-      row = await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const conversation = await tx.conversation.findUnique({
           where: { id: conversationId },
           select: { directKey: true, users: { select: { id: true } } },
@@ -150,6 +152,22 @@ export class MessagesService {
           !isCanonicalDirect(conversation.directKey, conversation.users, userId)
         )
           throw new NotFoundException('Conversation not found');
+        const previous = await tx.message.findUnique({
+          where: { userId_clientMessageId: { userId, clientMessageId } },
+          select: messageSelect,
+        });
+        if (previous) {
+          if (
+            previous.conversationId !== conversationId ||
+            previous.content !== content
+          )
+            throw new ConflictException('Client message ID already used');
+          return { row: previous, inserted: false };
+        }
+        const peerId = conversation.users.find(
+          (user) => user.id !== userId,
+        )!.id;
+        await this.relationships.assertCanCommunicate(tx, userId, peerId);
         const message = await tx.message.create({
           data: { conversationId, userId, clientMessageId, content },
           select: messageSelect,
@@ -164,9 +182,10 @@ export class MessagesService {
           },
           data: { lastMessageAt: message.createdAt },
         });
-        return message;
+        return { row: message, inserted: true };
       });
-      inserted = true;
+      row = result.row;
+      inserted = result.inserted;
     } catch (error) {
       if (!isClientMessageUniqueConflict(error)) throw error;
       const existing = await this.prisma.message.findUnique({

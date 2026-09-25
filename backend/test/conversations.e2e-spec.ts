@@ -172,6 +172,7 @@ describe('Direct conversation contracts (e2e)', () => {
           id: bobId,
           name: 'Bob',
           avatar: 'https://example.test/bob.png',
+          isDeleted: false,
         },
         latestMessage: {
           id: messageId,
@@ -183,7 +184,7 @@ describe('Direct conversation contracts (e2e)', () => {
       {
         id: emptyId,
         kind: 'direct',
-        peer: { id: danId, name: 'Dan', avatar: null },
+        peer: { id: danId, name: 'Dan', avatar: null, isDeleted: false },
         latestMessage: null,
         lastMessageAt: null,
       },
@@ -205,14 +206,23 @@ describe('Direct conversation contracts (e2e)', () => {
     expect(detail.body).toEqual({
       id: directId,
       kind: 'direct',
-      peer: { id: bobId, name: 'Bob', avatar: 'https://example.test/bob.png' },
+      peer: {
+        id: bobId,
+        name: 'Bob',
+        avatar: 'https://example.test/bob.png',
+        isDeleted: false,
+      },
       lastMessageAt: messageAt.toISOString(),
+      canMessage: true,
+      blockedByMe: false,
     });
     expect((await getDetail(aliceToken, emptyId).expect(200)).body).toEqual({
       id: emptyId,
       kind: 'direct',
-      peer: { id: danId, name: 'Dan', avatar: null },
+      peer: { id: danId, name: 'Dan', avatar: null, isDeleted: false },
       lastMessageAt: null,
+      canMessage: true,
+      blockedByMe: false,
     });
     expect(JSON.stringify(detail.body)).not.toMatch(
       /phoneNumber|users|messages|hashedRefreshToken/,
@@ -220,8 +230,10 @@ describe('Direct conversation contracts (e2e)', () => {
     expect((await getDetail(bobToken, directId).expect(200)).body).toEqual({
       id: directId,
       kind: 'direct',
-      peer: { id: aliceId, name: 'Alice', avatar: null },
+      peer: { id: aliceId, name: 'Alice', avatar: null, isDeleted: false },
       lastMessageAt: messageAt.toISOString(),
+      canMessage: true,
+      blockedByMe: false,
     });
     const history = await request(app.getHttpServer())
       .get(`/messages/${directId}`)
@@ -328,8 +340,11 @@ describe('Direct conversation contracts (e2e)', () => {
           id: bobId,
           name: 'Bob',
           avatar: 'https://example.test/bob.png',
+          isDeleted: false,
         },
         lastMessageAt: messageAt.toISOString(),
+        canMessage: true,
+        blockedByMe: false,
       },
       message: null,
     });

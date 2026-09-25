@@ -16,6 +16,7 @@ export const RATE_POLICIES = {
   start: { limit: 20, windowMs: 60_000 },
   message: { limit: 60, windowMs: 60_000 },
   auth: { limit: 20, windowMs: 60_000 },
+  block: { limit: 30, windowMs: 60_000 },
 } as const;
 export type RatePolicy = keyof typeof RATE_POLICIES;
 const POLICY_KEY = 'blipRatePolicy';

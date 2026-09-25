@@ -6,6 +6,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
 type SessionRequest = InternalAxiosRequestConfig & { _retry?: boolean; _originUserId?: string | null };
 const sessionEndpoint = (url?: string) => /(?:^|\/)auth\/(signin|signup|refresh|logout)(?:\?|$)/.test(url ?? "");
+const noRefreshEndpoint = (url?: string) => sessionEndpoint(url) || /(?:^|\/)auth\/account(?:\?|$)/.test(url ?? "");
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_BACKEND_URL,
@@ -28,7 +29,7 @@ export const refreshSession = singleFlight(async (generation): Promise<RefreshRe
 
 api.interceptors.response.use((response) => response, async (error: AxiosError) => {
   const original = error.config as SessionRequest | undefined;
-  if (!original || error.response?.status !== 401 || original._retry || sessionEndpoint(original.url)) throw error;
+  if (!original || error.response?.status !== 401 || original._retry || noRefreshEndpoint(original.url)) throw error;
   original._retry = true;
   const originalUserId = original._originUserId ?? null;
   if (!originalUserId) throw error;

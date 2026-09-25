@@ -7,6 +7,7 @@ export interface User {
 }
 
 export type UserDiscoveryResult = User;
+export interface ConversationPeer extends User { isDeleted: boolean; }
 
 export interface MessagePreview {
   id: string;
@@ -17,7 +18,7 @@ export interface MessagePreview {
 export interface ConversationSummary {
   id: string;
   kind: "direct";
-  peer: User;
+  peer: ConversationPeer;
   latestMessage: MessagePreview | null;
   lastMessageAt: string | null;
 }
@@ -25,8 +26,10 @@ export interface ConversationSummary {
 export interface ConversationDetail {
   id: string;
   kind: "direct";
-  peer: User;
+  peer: ConversationPeer;
   lastMessageAt: string | null;
+  canMessage: boolean;
+  blockedByMe: boolean;
 }
 
 export interface StartDirectRequest {

@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { LogOut, UserIcon } from "lucide-react";
+import { LogOut, Trash2, UserIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ChatService } from "@/services/conversation.service";
 import NewChatDialog from "./NewChatDialog";
@@ -16,6 +16,8 @@ import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useState } from "react";
+import { isAxiosError } from "axios";
 
 export default function ChatSidebar({ className }: { className?: string }) {
   const pathName = usePathname();
@@ -23,6 +25,7 @@ export default function ChatSidebar({ className }: { className?: string }) {
   const accountId = useAuthStore((state) => state.user?.id ?? null);
   const token = useAuthStore((state) => state.token);
   const sessionLoading = useAuthStore((state) => state.status !== "authenticated");
+  const [deleting, setDeleting] = useState(false);
   const logout = async () => {
     let failed = false;
     try { await api.post("auth/logout"); } catch { failed = true; }
@@ -30,6 +33,22 @@ export default function ChatSidebar({ className }: { className?: string }) {
     try { await signOut(auth); } catch { failed = true; }
     router.replace("/auth/login");
     if (failed) toast.error("Signed out here, but server revocation was not confirmed. This session may restore on reload.");
+  };
+  const deleteAccount = async () => {
+    if (deleting || !window.confirm("Delete your Blip account? Your profile and session will be removed. Messages you sent will remain visible to conversation participants. If you register again, your old account and history cannot be restored.")) return;
+    setDeleting(true);
+    try {
+      await api.delete("auth/account");
+      await endSession(true);
+      try { await signOut(auth); } catch { /* Blip session is already revoked. */ }
+      router.replace("/auth/login");
+    } catch (error) {
+      toast.error(isAxiosError(error) && error.response?.status === 401
+        ? "A current session is required. Sign in again before deleting your account."
+        : "Could not delete your account. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
   };
   const conversationsQuery = useQuery({
     queryKey: conversationKeys.list(accountId),
@@ -93,6 +112,11 @@ export default function ChatSidebar({ className }: { className?: string }) {
           })
         )}
       </div>
+      {!sessionLoading && accountId && token && <div className="p-4 border-t">
+        <button type="button" disabled={deleting} onClick={() => void deleteAccount()} className="flex items-center gap-2 text-sm text-red-700 dark:text-red-400 disabled:opacity-50">
+          <Trash2 className="h-4 w-4" />{deleting ? "Deleting account…" : "Delete account"}
+        </button>
+      </div>}
     </div>
   );
 }

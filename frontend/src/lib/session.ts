@@ -2,6 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { RefreshResponse } from "@/interface/Auth.interface";
 import { useAuthStore } from "@/store/useAuthStore";
 import { installWithIsolation, sessionEventAction } from "./session-rules";
+import { socket } from "./socket";
 
 let queryClient: QueryClient | null = null;
 let channel: BroadcastChannel | null = null;
@@ -14,6 +15,8 @@ export function bindSessionCache(client: QueryClient): void { queryClient = clie
 
 export async function clearAccount(): Promise<void> {
   generation += 1;
+  socket.disconnect();
+  socket.auth = {};
   useAuthStore.getState().beginBootstrap();
   if (queryClient) {
     await queryClient.cancelQueries();

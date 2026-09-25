@@ -16,4 +16,6 @@ export const ChatService = {
     const response = await api.get<ConversationDetail>(`/conversations/${conversationId}`);
     return response.data;
   },
+  blockPeer: async (peerId: string): Promise<void> => { await api.post(`/users/${peerId}/block`); },
+  unblockPeer: async (peerId: string): Promise<void> => { await api.delete(`/users/${peerId}/block`); },
 };

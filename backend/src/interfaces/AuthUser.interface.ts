@@ -1,7 +1,7 @@
 export interface AuthUser {
   id: string;
   name: string;
-  phoneNumber: string;
+  phoneNumber: string | null;
   avatar: string | null;
 }
 

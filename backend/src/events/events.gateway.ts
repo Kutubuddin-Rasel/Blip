@@ -64,7 +64,7 @@ export class EventsGateway
             throw new Error('Invalid claims');
           }
           const user = await this.prisma.user.findUnique({
-            where: { id: payload.sub },
+            where: { id: payload.sub, deletedAt: null },
             select: { id: true },
           });
           if (!user) throw new Error('Unknown user');
@@ -89,7 +89,11 @@ export class EventsGateway
       Math.min(remaining, 2_147_483_647),
     );
     await client.join(userRoom(data.userId));
-    if (!client.connected || Date.now() >= data.expiresAt)
+    const active = await this.prisma.user.findUnique({
+      where: { id: data.userId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!active || !client.connected || Date.now() >= data.expiresAt)
       return client.disconnect(true);
     client.emit('app.ready');
   }
@@ -111,6 +115,14 @@ export class EventsGateway
     }
     if (typeof conversationId !== 'string' || !uuidV4.test(conversationId))
       return { ok: false };
+    const active = await this.prisma.user.findUnique({
+      where: { id: data.userId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!active) {
+      client.disconnect(true);
+      return { ok: false };
+    }
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
       select: { directKey: true, users: { select: { id: true } } },
@@ -152,6 +164,10 @@ export class EventsGateway
     this.server
       .to(userIds.map(userRoom))
       .emit('conversation.created', { conversationId });
+  }
+
+  disconnectUser(userId: string) {
+    this.server.in(userRoom(userId)).disconnectSockets(true);
   }
 
   async publishMessageCreated(conversationId: string, messageId: string) {

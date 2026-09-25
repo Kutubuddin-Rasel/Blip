@@ -17,6 +17,7 @@ import {
 import type { Message } from 'src/interfaces/Message.interface';
 import { directKey, isCanonicalDirect } from './direct-key';
 import { EventsGateway } from 'src/events/events.gateway';
+import { RelationshipService } from 'src/relationship/relationship.service';
 
 const latestMessageOrder: [{ createdAt: 'desc' }, { id: 'desc' }] = [
   { createdAt: 'desc' },
@@ -26,7 +27,7 @@ const latestMessageOrder: [{ createdAt: 'desc' }, { id: 'desc' }] = [
 const conversationSelect = {
   id: true,
   directKey: true,
-  users: { select: { id: true, name: true, avatar: true } },
+  users: { select: { id: true, name: true, avatar: true, deletedAt: true } },
   messages: {
     take: 1,
     orderBy: latestMessageOrder,
@@ -37,7 +38,7 @@ const conversationSelect = {
 type SafeConversationRow = {
   id: string;
   directKey: string | null;
-  users: ConversationPeer[];
+  users: (Omit<ConversationPeer, 'isDeleted'> & { deletedAt: Date | null })[];
   messages: { id: string; content: string; createdAt: Date }[];
 };
 
@@ -89,12 +90,19 @@ function isUniqueOn(error: unknown, field: string): boolean {
 }
 
 function directPeer(
-  users: ConversationPeer[],
+  users: SafeConversationRow['users'],
   currentUserId: string,
   key: string | null,
 ): ConversationPeer | null {
-  return isCanonicalDirect(key, users, currentUserId)
-    ? (users.find((user) => user.id !== currentUserId) ?? null)
+  if (!isCanonicalDirect(key, users, currentUserId)) return null;
+  const user = users.find((participant) => participant.id !== currentUserId);
+  return user
+    ? {
+        id: user.id,
+        name: user.deletedAt ? 'Deleted user' : user.name,
+        avatar: user.deletedAt ? null : user.avatar,
+        isDeleted: !!user.deletedAt,
+      }
     : null;
 }
 
@@ -122,12 +130,14 @@ function toSummary(
 function toDetail(
   row: SafeConversationRow,
   peer: ConversationPeer,
+  relationship: { canMessage: boolean; blockedByMe: boolean },
 ): ConversationDetail {
   return {
     id: row.id,
     kind: 'direct',
     peer,
     lastMessageAt: row.messages[0]?.createdAt.toISOString() ?? null,
+    ...relationship,
   };
 }
 
@@ -137,6 +147,7 @@ export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway,
+    private readonly relationships: RelationshipService,
   ) {}
 
   async create(
@@ -151,11 +162,10 @@ export class ConversationsService {
         'Initial message and client message ID must be supplied together',
       );
     }
-    const recipient = await this.prisma.user.findUnique({
-      where: { id: recipientId },
-      select: { id: true },
-    });
-    if (!recipient) throw new NotFoundException('Recipient not found');
+    if (
+      !(await this.relationships.state(currentUserId, recipientId)).canMessage
+    )
+      throw new NotFoundException('Recipient unavailable');
 
     let conversationId: string;
     let message: StartMessageRow | null = null;
@@ -167,10 +177,14 @@ export class ConversationsService {
     });
     if (existing) {
       conversationId = existing.id;
+      await this.prisma.$transaction((tx) =>
+        this.relationships.assertCanCommunicate(tx, currentUserId, recipientId),
+      );
       if (initialMessage && clientMessageId) {
         const first = await this.addFirstMessage(
           conversationId,
           currentUserId,
+          recipientId,
           initialMessage,
           clientMessageId,
         );
@@ -180,6 +194,11 @@ export class ConversationsService {
     } else {
       try {
         const created = await this.prisma.$transaction(async (tx) => {
+          await this.relationships.assertCanCommunicate(
+            tx,
+            currentUserId,
+            recipientId,
+          );
           const now = initialMessage ? new Date() : null;
           const conversation = await tx.conversation.create({
             data: {
@@ -221,6 +240,7 @@ export class ConversationsService {
             const first = await this.addFirstMessage(
               conversationId,
               currentUserId,
+              recipientId,
               initialMessage,
               clientMessageId,
             );
@@ -268,6 +288,7 @@ export class ConversationsService {
   private async addFirstMessage(
     conversationId: string,
     userId: string,
+    recipientId: string,
     content: string,
     clientMessageId: string,
   ): Promise<{ message: StartMessageRow; inserted: boolean }> {
@@ -288,6 +309,7 @@ export class ConversationsService {
           select: startMessageSelect,
         });
         if (previous) return { message: replay(previous), inserted: false };
+        await this.relationships.assertCanCommunicate(tx, userId, recipientId);
         const now = new Date();
         const message = await tx.message.create({
           data: {
@@ -360,6 +382,10 @@ export class ConversationsService {
     if (!conversation || !peer) {
       throw new NotFoundException('Conversation not found');
     }
-    return toDetail(conversation, peer);
+    return toDetail(
+      conversation,
+      peer,
+      await this.relationships.state(userId, peer.id),
+    );
   }
 }

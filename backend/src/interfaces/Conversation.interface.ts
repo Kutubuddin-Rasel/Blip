@@ -2,6 +2,7 @@ export interface ConversationPeer {
   id: string;
   name: string;
   avatar: string | null;
+  isDeleted: boolean;
 }
 
 export interface MessagePreview {
@@ -23,6 +24,8 @@ export interface ConversationDetail {
   kind: 'direct';
   peer: ConversationPeer;
   lastMessageAt: string | null;
+  canMessage: boolean;
+  blockedByMe: boolean;
 }
 
 import type { Message } from './Message.interface';

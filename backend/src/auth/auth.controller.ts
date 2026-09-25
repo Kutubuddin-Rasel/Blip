@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Post,
   Req,
   Res,
@@ -84,5 +85,20 @@ export class AuthController {
       this.cookieService.clearAuthCookies(res);
     }
     return { message: 'Logged out successfully' };
+  }
+
+  @Delete('account')
+  @UseGuards(AccessTokenGuard)
+  async deleteAccount(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (!req.user?.id) throw new UnauthorizedException('Session unavailable');
+    await this.authService.deleteAccount(
+      req.user.id,
+      this.cookieService.extractRefreshToken(req),
+    );
+    this.cookieService.clearAuthCookies(res);
+    return { deleted: true };
   }
 }
