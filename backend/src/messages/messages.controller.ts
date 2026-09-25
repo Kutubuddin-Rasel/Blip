@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -36,9 +37,10 @@ export class MessagesController {
   @Get(':conversationId')
   async findByConversation(
     @Req() req: Request,
-    @Param('conversationId') conversationId: string,
+    @Param('conversationId', new ParseUUIDPipe({ version: '4' }))
+    conversationId: string,
     @Query('cursor') cursor?: string,
-    @Query('limit') limit: number = 50,
+    @Query('limit') limit?: string,
   ) {
     const userId = req.user?.id;
     if (!userId) {

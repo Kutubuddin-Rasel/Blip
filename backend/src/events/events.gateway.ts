@@ -1,17 +1,27 @@
-import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { JwtPayload } from 'src/interfaces/AuthUser.interface';
-import { SocketAuth, SocketData } from 'src/interfaces/Socket.interface';
 import { PrismaService } from 'src/prisma.service';
+
+type AuthenticatedSocket = {
+  userId: string;
+  expiresAt: number;
+  activeConversationId?: string;
+  expiryTimer?: ReturnType<typeof setTimeout>;
+};
+
+const uuidV4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const conversationRoom = (id: string) => `conversation:${id}`;
+const userRoom = (id: string) => `user:${id}`;
 
 @WebSocketGateway({
   cors: {
@@ -19,7 +29,9 @@ import { PrismaService } from 'src/prisma.service';
     credentials: true,
   },
 })
-export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class EventsGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
@@ -29,46 +41,121 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  async handleConnection(client: Socket) {
-    try {
-      const auth = client.handshake.auth as SocketAuth;
-      const token = auth.token || client.handshake.headers.authorization;
-
-      if (!token) {
-        throw new UnauthorizedException('No token provided');
-      }
-
-      const secret =
-        this.configService.getOrThrow<string>('ACCESSTOKEN_SECRET');
-
-      const payload = await this.jwtService.verifyAsync<JwtPayload>(token, {
-        secret,
-      });
-
-      client.data = { user: payload };
-      console.log(`User ${payload.sub} is connected`);
-    } catch (error) {
-      console.log('Auth failed', error);
-      client.disconnect();
-    }
+  afterInit(server: Server) {
+    server.use((client, next) => {
+      void (async () => {
+        try {
+          const token: unknown = (client.handshake.auth as { token?: unknown })
+            .token;
+          if (typeof token !== 'string' || !token)
+            throw new Error('Missing token');
+          const payload = await this.jwtService.verifyAsync<{
+            sub: string;
+            exp: number;
+          }>(token, {
+            secret: this.configService.getOrThrow<string>('ACCESSTOKEN_SECRET'),
+          });
+          if (
+            !uuidV4.test(payload.sub) ||
+            !Number.isSafeInteger(payload.exp) ||
+            payload.exp * 1000 <= Date.now()
+          ) {
+            throw new Error('Invalid claims');
+          }
+          const user = await this.prisma.user.findUnique({
+            where: { id: payload.sub },
+            select: { id: true },
+          });
+          if (!user) throw new Error('Unknown user');
+          client.data = {
+            userId: user.id,
+            expiresAt: payload.exp * 1000,
+          } satisfies AuthenticatedSocket;
+          next();
+        } catch {
+          next(new Error('Unauthorized'));
+        }
+      })();
+    });
   }
 
-  @SubscribeMessage('joinConversation')
-  async handleJoinConversation(client: Socket, conversationId: string) {
-    const userId = (client.data as SocketData).user.sub;
-    const isParticipant = await this.prisma.conversation.findFirst({
-      where: {
-        id: conversationId,
-        users: { some: { id: userId } },
-      },
-    });
-    if (!isParticipant) {
-      throw new UnauthorizedException('User tried to join unautohrized room');
-    }
-    await client.join(conversationId);
+  async handleConnection(client: Socket) {
+    const data = client.data as AuthenticatedSocket;
+    const remaining = data.expiresAt - Date.now();
+    if (remaining <= 0) return client.disconnect(true);
+    data.expiryTimer = setTimeout(
+      () => client.disconnect(true),
+      Math.min(remaining, 2_147_483_647),
+    );
+    await client.join(userRoom(data.userId));
+    if (!client.connected || Date.now() >= data.expiresAt)
+      return client.disconnect(true);
+    client.emit('app.ready');
   }
 
   handleDisconnect(client: Socket) {
-    console.log(`Clinet disconnected ${client.id}`);
+    const data = client.data as Partial<AuthenticatedSocket>;
+    if (data.expiryTimer) clearTimeout(data.expiryTimer);
+  }
+
+  @SubscribeMessage('conversation.join')
+  async joinConversation(
+    client: Socket,
+    conversationId: unknown,
+  ): Promise<{ ok: boolean }> {
+    const data = client.data as AuthenticatedSocket;
+    if (Date.now() >= data.expiresAt) {
+      client.disconnect(true);
+      return { ok: false };
+    }
+    if (typeof conversationId !== 'string' || !uuidV4.test(conversationId))
+      return { ok: false };
+    const participant = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, users: { some: { id: data.userId } } },
+      select: { id: true },
+    });
+    if (!participant) return { ok: false };
+    if (
+      data.activeConversationId &&
+      data.activeConversationId !== conversationId
+    ) {
+      await client.leave(conversationRoom(data.activeConversationId));
+    }
+    await client.join(conversationRoom(conversationId));
+    data.activeConversationId = conversationId;
+    return { ok: true };
+  }
+
+  @SubscribeMessage('conversation.leave')
+  async leaveConversation(
+    client: Socket,
+    conversationId: unknown,
+  ): Promise<{ ok: boolean }> {
+    const data = client.data as AuthenticatedSocket;
+    if (conversationId !== data.activeConversationId) return { ok: false };
+    if (typeof conversationId !== 'string') return { ok: false };
+    await client.leave(conversationRoom(conversationId));
+    data.activeConversationId = undefined;
+    return { ok: true };
+  }
+
+  publishConversationCreated(conversationId: string, userIds: string[]) {
+    this.server
+      .to(userIds.map(userRoom))
+      .emit('conversation.created', { conversationId });
+  }
+
+  async publishMessageCreated(conversationId: string, messageId: string) {
+    const conversation = await this.prisma.conversation.findUniqueOrThrow({
+      where: { id: conversationId },
+      select: { users: { select: { id: true } } },
+    });
+    const rooms = [
+      conversationRoom(conversationId),
+      ...conversation.users.map((user) => userRoom(user.id)),
+    ];
+    this.server
+      .to(rooms)
+      .emit('message.created', { conversationId, messageId });
   }
 }

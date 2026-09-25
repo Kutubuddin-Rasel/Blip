@@ -1,11 +1,14 @@
-import { IsNotEmpty, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 
 export class CreateMessageDto {
-  @IsUUID()
+  @IsUUID('4')
   conversationId: string;
 
+  @IsUUID('4')
+  clientMessageId: string;
+
   @IsString()
-  @IsNotEmpty()
-  @MinLength(1)
+  @Matches(/\S/)
+  @MaxLength(4000)
   content: string;
 }

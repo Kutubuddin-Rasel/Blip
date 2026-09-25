@@ -1,4 +1,4 @@
-import { MessageResponse } from "@/interface/Message.interface";
+import { Message, MessageResponse } from "@/interface/Message.interface";
 import api from "@/lib/api";
 
 export const MessageService = {
@@ -8,18 +8,12 @@ export const MessageService = {
     if (pageParam) {
       params.append("cursor", pageParam);
     }
-    const response = await api.get(`/messages/${conversationId}`, { params });
-    return {
-      items: response.data,
-      nextCursor:
-        response.data.length > 0
-          ? response.data[response.data.length - 1].id
-          : null,
-    };
+    const response = await api.get<MessageResponse>(`/messages/${conversationId}`, { params });
+    return response.data;
   },
 
-  sendMessage: async (conversationId: string, content: string) => {
-    const response = await api.post("/messages", { conversationId, content });
+  sendMessage: async (conversationId: string, content: string, clientMessageId: string): Promise<Message> => {
+    const response = await api.post<Message>("/messages", { conversationId, content, clientMessageId });
     return response.data;
   },
 };
