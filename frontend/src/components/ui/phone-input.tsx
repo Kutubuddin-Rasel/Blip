@@ -1,5 +1,6 @@
 import * as React from "react";
 import PhoneInput from "react-phone-number-input/input";
+import type { Country } from "react-phone-number-input";
 import { Input } from "./input";
 import { cn } from "@/lib/utils";
 
@@ -9,14 +10,16 @@ interface PhoneInputProps extends Omit<
 > {
   value: string;
   onChange: (value: string | undefined) => void;
+  country?: Country;
   className?: string;
 }
 
 const PhoneInputShadcn = React.forwardRef<HTMLInputElement, PhoneInputProps>(
-  ({ className, value, onChange, ...props }, ref) => {
+  ({ className, country, value, onChange, ...props }, ref) => {
     return (
       <PhoneInput
-        country="BD"
+        className={className}
+        country={country}
         international
         withCountryCallingCode
         inputComponent={InputComponent}

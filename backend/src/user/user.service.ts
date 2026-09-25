@@ -1,44 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma.service';
 
+export interface UserDiscoveryResult {
+  id: string;
+  name: string;
+  avatar: string | null;
+}
+
 @Injectable()
 export class UserService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(currentUserId: string, query?: string, cursor?: string) {
-    const limit = 20;
-    const users = await this.prisma.user.findMany({
-      where: {
-        id: { not: currentUserId },
-        ...(query && {
-          OR: [
-            { name: { contains: query, mode: 'insensitive' } },
-            { phoneNumber: { contains: query } },
-          ],
-        }),
-      },
-      select: {
-        id: true,
-        name: true,
-        avatar: true,
-        phoneNumber: true,
-      },
-      take: limit + 1,
-      cursor: cursor ? { id: cursor } : undefined,
-      skip: cursor ? 1 : 0,
-      orderBy: { name: 'asc' },
+  async discover(
+    currentUserId: string,
+    phoneNumber: string,
+  ): Promise<UserDiscoveryResult | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { phoneNumber },
+      select: { id: true, name: true, avatar: true },
     });
 
-    let nextCursor: null | string = null;
-    if (users.length > limit) {
-      const nextItem = users.pop();
-      if (nextItem) {
-        nextCursor = nextItem.id;
-      }
-    }
-    return {
-      items: users,
-      nextCursor,
-    };
+    if (!user || user.id === currentUserId) return null;
+    return { id: user.id, name: user.name, avatar: user.avatar };
   }
 }

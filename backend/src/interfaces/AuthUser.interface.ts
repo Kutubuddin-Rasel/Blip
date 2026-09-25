@@ -15,6 +15,11 @@ export interface Tokens {
   refreshToken: string;
 }
 
+export interface RefreshPayload {
+  sub: string;
+  jti: string;
+}
+
 export interface SafeUser extends Tokens {
   user: AuthUser;
 }

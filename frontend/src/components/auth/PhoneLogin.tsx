@@ -1,8 +1,9 @@
 "use client";
 import { LoginResponse } from "@/interface/Auth.interface";
-import { useAuthStore } from "@/store/useAuthStore";
-import { useQueryClient } from "@tanstack/react-query";
-import { ConfirmationResult, signInWithPhoneNumber, User } from "firebase/auth";
+import { installSession } from "@/lib/session";
+import { auth } from "@/lib/firebase";
+import { signOut } from "firebase/auth";
+import { ConfirmationResult } from "firebase/auth";
 import { useEffect, useState } from "react";
 import {
   Card,
@@ -28,10 +29,9 @@ export default function PhoneLogin() {
   );
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const { setUser, setToken } = useAuthStore();
   const router = useRouter();
-  const queryClient = useQueryClient();
 
   useEffect(() => {
     AuthService.initCaptcha();
@@ -39,41 +39,42 @@ export default function PhoneLogin() {
 
   const handleSendOtp = async () => {
     if (!phoneNumber) return;
+    setErrorMessage("");
     setLoading(true);
     try {
       const confirmation = await AuthService.sendOTP(phoneNumber);
       setConfirmResult(confirmation);
       setStep("OTP");
-    } catch (error) {
-      console.error("SMS Failed", error);
-      alert("Failed to send SMS");
+    } catch {
+      setErrorMessage("Could not send the code. Check the number and try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAuthSuccess = (
+  const handleAuthSuccess = async (
     response: AxiosResponse<LoginResponse>,
   ) => {
-    setUser(response.data.user);
-    setToken(response.data.accessToken);
-    queryClient.setQueryData(["profile"], response.data.user);
-    router.push("/chat");
+    await installSession(response.data, true);
+    try { await signOut(auth); }
+    catch { console.warn("Firebase client sign-out failed after Blip session establishment"); }
+    router.replace("/chat");
   };
 
   const handleVerifyOtp = async () => {
     if (!confirmResult || !otp) return;
+    setErrorMessage("");
     setLoading(true);
     try {
       const { response } = await AuthService.verifyAndLogin(confirmResult, otp);
-      handleAuthSuccess(response);
+      await handleAuthSuccess(response);
     } catch (err) {
       const error = err as AxiosError;
       if (error.response?.status === 404) {
         setStep("NAME");
       } else {
-        console.error("Verification Failed", error);
-        alert("Invalid code or Server Error");
+        setErrorMessage("Could not verify the code or start a session. Try again.");
+        try { await signOut(auth); } catch { console.warn("Firebase client sign-out failed after exchange error"); }
       }
     } finally {
       setLoading(false);
@@ -82,13 +83,13 @@ export default function PhoneLogin() {
 
   const handleRegister = async () => {
     if (!name) return;
+    setErrorMessage("");
     setLoading(true);
     try {
       const { response } = await AuthService.register(name);
-      handleAuthSuccess(response);
-    } catch (error) {
-      console.error("Registration failed", error);
-      alert("Registration failed");
+      await handleAuthSuccess(response);
+    } catch {
+      setErrorMessage("Could not create the account. Try again.");
     } finally {
       setLoading(false);
     }
@@ -108,9 +109,11 @@ export default function PhoneLogin() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
+          {errorMessage && <p role="alert" className="text-sm text-red-600">{errorMessage}</p>}
           {step === "PHONE" && (
             <div className="flex flex-col gap-4">
               <PhoneInputShadcn
+                country="BD"
                 placeholder="Enter your phone number"
                 value={phoneNumber}
                 onChange={(val) => setPhoneNumber(val || "")}

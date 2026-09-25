@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
-import ms from 'ms';
-import { StringValue } from 'ms';
+import { sessionDuration } from '../session-duration';
 
 export interface AuthCookies {
   refresh_token?: string;
@@ -11,21 +10,24 @@ export interface AuthCookies {
 @Injectable()
 export class CookieService {
   private readonly isProduction: boolean;
-  constructor(private readonly configSerivce: ConfigService) {
-    this.isProduction = configSerivce.get<string>('NODE_ENV') === 'production';
+  private readonly refreshMaxAge: number;
+  constructor(private readonly configService: ConfigService) {
+    this.isProduction = configService.get<string>('NODE_ENV') === 'production';
+    this.refreshMaxAge = sessionDuration(
+      configService,
+      'REFRESHTOKEN_EXPIRY',
+      30 * 24 * 60 * 60 * 1000,
+    ).milliseconds;
   }
 
   setAuthCookies(res: Response, refreshToken: string): void {
     const secure = this.isProduction;
     const sameSite: 'strict' | 'lax' | 'none' = secure ? 'strict' : 'lax';
-    const expiry = this.configSerivce.getOrThrow<StringValue>(
-      'REFRESHTOKEN_EXPIRY',
-    );
     res.cookie('refresh_token', refreshToken, {
       httpOnly: true,
       sameSite,
       secure,
-      maxAge: ms(expiry),
+      maxAge: this.refreshMaxAge,
       path: '/auth',
     });
   }
@@ -33,6 +35,9 @@ export class CookieService {
   clearAuthCookies(res: Response) {
     res.clearCookie('refresh_token', {
       path: '/auth',
+      sameSite: this.isProduction ? 'strict' : 'lax',
+      secure: this.isProduction,
+      httpOnly: true,
     });
   }
 

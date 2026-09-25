@@ -1,4 +1,8 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
 
@@ -26,5 +30,23 @@ export class FirebaseService implements OnModuleInit {
 
   getAuth() {
     return admin.auth();
+  }
+
+  async verifyPhoneIdentity(
+    idToken: string,
+  ): Promise<{ firebaseUid: string; phoneNumber: string }> {
+    try {
+      const verified = await this.getAuth().verifyIdToken(idToken);
+      if (
+        !verified.uid ||
+        !verified.phone_number ||
+        !/^\+[1-9]\d{6,14}$/.test(verified.phone_number)
+      ) {
+        throw new Error('Missing verified phone identity');
+      }
+      return { firebaseUid: verified.uid, phoneNumber: verified.phone_number };
+    } catch {
+      throw new UnauthorizedException('Phone verification failed');
+    }
   }
 }

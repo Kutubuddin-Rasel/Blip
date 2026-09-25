@@ -1,29 +1,40 @@
+import { randomUUID } from 'node:crypto';
+import type { StringValue } from 'ms';
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
-  InternalServerErrorException,
-  UnauthorizedException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { PrismaService } from 'src/prisma.service';
-import { PasswordService } from 'src/auth/services/password.service';
-import { SignInDto } from 'src/auth/dto/signin.dto';
-import { SignUpDto } from 'src/auth/dto/signup.dto';
-import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { StringValue } from 'ms';
-import {
-  AuthUser,
-  JwtPayload,
-  SafeUser,
-} from '../interfaces/AuthUser.interface';
+import { JwtService } from '@nestjs/jwt';
+import { Prisma } from 'generated/prisma/client';
+import { PrismaService } from 'src/prisma.service';
+import { PasswordService } from './services/password.service';
+import { FirebaseService } from 'src/firebase/firebase.service';
 import { RedisService } from 'src/redis/redis.service';
 import { CacheOptions } from 'src/interfaces/Redis.interface';
-import { FirebaseService } from 'src/firebase/firebase.service';
+import {
+  AuthUser,
+  RefreshPayload,
+  SafeUser,
+} from 'src/interfaces/AuthUser.interface';
+import { SignInDto } from './dto/signin.dto';
+import { SignUpDto } from './dto/signup.dto';
+import { sessionDuration } from './session-duration';
+
+const publicUserSelect = {
+  id: true,
+  name: true,
+  phoneNumber: true,
+  avatar: true,
+} as const;
 
 @Injectable()
 export class AuthService {
+  private readonly accessExpiry: StringValue;
+  private readonly refreshExpiry: StringValue;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwordService: PasswordService,
@@ -31,190 +42,214 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
     private readonly firebaseService: FirebaseService,
-  ) {}
+  ) {
+    const access = sessionDuration(
+      configService,
+      'ACCESSTOKEN_EXPIRY',
+      60 * 60 * 1000,
+    );
+    const refresh = sessionDuration(
+      configService,
+      'REFRESHTOKEN_EXPIRY',
+      30 * 24 * 60 * 60 * 1000,
+    );
+    if (refresh.milliseconds <= access.milliseconds)
+      throw new Error('Refresh expiry must exceed access expiry');
+    this.accessExpiry = access.value;
+    this.refreshExpiry = refresh.value;
+  }
 
-  async verifyIdToken(idToken: string) {
+  private async syncVerifiedPhone(
+    user: { id: string; phoneNumber: string },
+    phoneNumber: string,
+  ): Promise<AuthUser> {
+    if (user.phoneNumber === phoneNumber) {
+      return this.prisma.user.findUniqueOrThrow({
+        where: { id: user.id },
+        select: publicUserSelect,
+      });
+    }
     try {
-      const decodedToken = await this.firebaseService
-        .getAuth()
-        .verifyIdToken(idToken);
-      return decodedToken;
-    } catch {
-      throw new UnauthorizedException('Invalid firebase token');
+      const updated = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { phoneNumber },
+        select: publicUserSelect,
+      });
+      try {
+        await this.redisService.del(`userId:${user.id}`);
+      } catch {
+        /* Cache invalidation is best effort. */
+      }
+      return updated;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Verified phone is already linked to another account',
+        );
+      }
+      throw error;
     }
   }
-  async signUp(signUpDto: SignUpDto): Promise<SafeUser> {
-    const decodedToken = await this.verifyIdToken(signUpDto.idToken);
-    if (!decodedToken.phone_number) {
-      throw new BadRequestException('Phone number is required for signup');
-    }
-    const existing = await this.prisma.user.findUnique({
-      where: { phoneNumber: decodedToken.phone_number },
+
+  async signUp(dto: SignUpDto): Promise<SafeUser> {
+    const identity = await this.firebaseService.verifyPhoneIdentity(
+      dto.idToken,
+    );
+    let user = await this.prisma.user.findUnique({
+      where: { firebaseUid: identity.firebaseUid },
+      select: publicUserSelect,
     });
-
-    if (existing) {
-      throw new ConflictException('Number is already in use');
+    if (user) {
+      user = await this.syncVerifiedPhone(user, identity.phoneNumber);
+    } else {
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            firebaseUid: identity.firebaseUid,
+            phoneNumber: identity.phoneNumber,
+            name: dto.name,
+            avatar: dto.avatar ?? null,
+          },
+          select: publicUserSelect,
+        });
+      } catch (error) {
+        if (
+          !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+          error.code !== 'P2002'
+        )
+          throw error;
+        const winner = await this.prisma.user.findUnique({
+          where: { firebaseUid: identity.firebaseUid },
+          select: publicUserSelect,
+        });
+        if (!winner)
+          throw new ConflictException(
+            'Verified phone is already linked to another account',
+          );
+        user = await this.syncVerifiedPhone(winner, identity.phoneNumber);
+      }
     }
-
-    const user = await this.prisma.user.create({
-      data: {
-        phoneNumber: decodedToken.phone_number,
-        name: signUpDto.name,
-        avatar: signUpDto.avatar ?? null,
-      },
-      select: {
-        id: true,
-        phoneNumber: true,
-        name: true,
-        avatar: true,
-      },
-    });
-
-    const { accessToken, refreshToken } = await this.getTokens({
-      sub: user.id,
-      username: user.name,
-    });
-
-    const updateToken = await this.updateRefreshToken(user.id, refreshToken);
-    if (!updateToken) {
-      throw new InternalServerErrorException();
-    }
-    return {
-      user: user,
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    };
+    return this.issueSession(user);
   }
 
-  async validateUser(signInDto: SignInDto): Promise<AuthUser | null> {
-    const decodedToken = await this.verifyIdToken(signInDto.idToken);
-    if (!decodedToken.phone_number) {
-      throw new UnauthorizedException('Invalid phone number');
-    }
+  async signIn(dto: SignInDto): Promise<SafeUser> {
+    const identity = await this.firebaseService.verifyPhoneIdentity(
+      dto.idToken,
+    );
     const user = await this.prisma.user.findUnique({
-      where: { phoneNumber: decodedToken.phone_number },
+      where: { firebaseUid: identity.firebaseUid },
+      select: publicUserSelect,
     });
-
-    if (!user) {
-      return null;
-    }
-
-    const { hashedRefreshToken, createdAt, ...result } = user;
-    return result;
+    if (!user) throw new NotFoundException('User not registered');
+    return this.issueSession(
+      await this.syncVerifiedPhone(user, identity.phoneNumber),
+    );
   }
 
-  async signIn(signInDto: SignInDto): Promise<SafeUser> {
-    const user = await this.validateUser(signInDto);
-    if (!user) {
-      throw new NotFoundException('User not registered');
-    }
-    const { accessToken, refreshToken } = await this.getTokens({
-      sub: user.id,
-      username: user.name,
+  private async issueSession(user: AuthUser): Promise<SafeUser> {
+    const accessToken = await this.jwtService.signAsync(
+      { sub: user.id, username: user.name },
+      {
+        secret: this.configService.getOrThrow<string>('ACCESSTOKEN_SECRET'),
+        expiresIn: this.accessExpiry,
+      },
+    );
+    const refreshToken = await this.jwtService.signAsync(
+      { sub: user.id, jti: randomUUID() } satisfies RefreshPayload,
+      {
+        secret: this.configService.getOrThrow<string>('REFRESHTOKEN_SECRET'),
+        expiresIn: this.refreshExpiry,
+      },
+    );
+    const hash = await this.passwordService.hash(refreshToken);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { hashedRefreshToken: hash },
     });
+    return { user, accessToken, refreshToken };
+  }
 
-    const updateToken = await this.updateRefreshToken(user.id, refreshToken);
-    if (!updateToken) {
-      throw new InternalServerErrorException();
+  async refreshTokens(
+    rawToken: string | null,
+  ): Promise<{ user: AuthUser; accessToken: string }> {
+    if (!rawToken) throw new UnauthorizedException('Session unavailable');
+    let payload: RefreshPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<RefreshPayload>(rawToken, {
+        secret: this.configService.getOrThrow<string>('REFRESHTOKEN_SECRET'),
+      });
+    } catch {
+      throw new UnauthorizedException('Session unavailable');
     }
+    if (!payload.sub || !payload.jti)
+      throw new UnauthorizedException('Session unavailable');
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { ...publicUserSelect, hashedRefreshToken: true },
+    });
+    if (
+      !user?.hashedRefreshToken ||
+      !(await this.passwordService.verify(rawToken, user.hashedRefreshToken))
+    ) {
+      throw new UnauthorizedException('Session unavailable');
+    }
+    const accessToken = await this.jwtService.signAsync(
+      { sub: user.id, username: user.name },
+      {
+        secret: this.configService.getOrThrow<string>('ACCESSTOKEN_SECRET'),
+        expiresIn: this.accessExpiry,
+      },
+    );
     return {
-      user: user,
-      accessToken: accessToken,
-      refreshToken: refreshToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        phoneNumber: user.phoneNumber,
+        avatar: user.avatar,
+      },
+      accessToken,
     };
   }
 
-  async logout(userId: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
+  async logout(rawToken: string | null): Promise<void> {
+    if (!rawToken) return;
+    let payload: RefreshPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<RefreshPayload>(rawToken, {
+        secret: this.configService.getOrThrow<string>('REFRESHTOKEN_SECRET'),
+      });
+    } catch {
+      return;
+    }
+    if (!payload.sub || !payload.jti) return;
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { hashedRefreshToken: true },
+    });
+    if (
+      !user?.hashedRefreshToken ||
+      !(await this.passwordService.verify(rawToken, user.hashedRefreshToken))
+    )
+      return;
+    await this.prisma.user.updateMany({
+      where: { id: payload.sub, hashedRefreshToken: user.hashedRefreshToken },
       data: { hashedRefreshToken: null },
     });
-
-    await this.redisService.del(`userId:${userId}`);
-  }
-
-  async updateRefreshToken(
-    userId: string,
-    refreshToken: string,
-  ): Promise<AuthUser> {
-    try {
-      const hashRefreshToken = await this.passwordService.hash(refreshToken);
-      const user = await this.prisma.user.update({
-        where: { id: userId },
-        data: { hashedRefreshToken: hashRefreshToken },
-        select: {
-          id: true,
-          phoneNumber: true,
-          name: true,
-          avatar: true,
-        },
-      });
-      return user;
-    } catch {
-      throw new InternalServerErrorException(
-        'Internal server error while updating refresh token',
-      );
-    }
-  }
-
-  async getTokens(payload: JwtPayload) {
-    const accessToken = await this.jwtService.signAsync(payload, {
-      secret: this.configService.getOrThrow<string>('ACCESSTOKEN_SECRET'),
-      expiresIn:
-        this.configService.getOrThrow<StringValue>('ACCESSTOKEN_EXPIRY'),
-    });
-    const refreshToken = await this.jwtService.signAsync(payload, {
-      secret: this.configService.getOrThrow<string>('REFRESHTOKEN_SECRET'),
-      expiresIn: this.configService.getOrThrow<StringValue>(
-        'REFRESHTOKEN_EXPIRY',
-      ),
-    });
-
-    return {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    };
-  }
-
-  async refreshTokens(payload: JwtPayload): Promise<SafeUser> {
-    try {
-      const { accessToken, refreshToken } = await this.getTokens(payload);
-      const user = await this.updateRefreshToken(payload.sub, refreshToken);
-      return { user, accessToken, refreshToken };
-    } catch {
-      throw new UnauthorizedException('User no longer exist');
-    }
   }
 
   async getProfile(userId: string): Promise<AuthUser> {
-    const data = await this.redisService.get<AuthUser>(`userId:${userId}`);
-    if (data) {
-      return data;
-    }
+    const cached = await this.redisService.get<AuthUser>(`userId:${userId}`);
+    if (cached) return cached;
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      select: publicUserSelect,
     });
-    if (!user) {
-      throw new UnauthorizedException('User no longer exist');
-    }
-    const key = `userId:${userId}`;
-    const options: CacheOptions = {
-      ttl: 36000,
-    };
-    const userData = {
-      id: user.id,
-      name: user.name,
-      phoneNumber: user.phoneNumber,
-      avatar: user.avatar,
-    };
-    const setUser = await this.redisService.set<AuthUser>(
-      key,
-      userData,
-      options,
-    );
-    if (!setUser) {
-      console.warn('Error while setting user profile data');
-    }
-    return userData;
+    if (!user) throw new UnauthorizedException('User no longer exists');
+    const options: CacheOptions = { ttl: 36000 };
+    await this.redisService.set<AuthUser>(`userId:${userId}`, user, options);
+    return user;
   }
 }

@@ -1,24 +1,24 @@
 import { User } from "@/interface/Auth.interface";
 import { create } from "zustand";
 
+export type AuthStatus = "bootstrapping" | "authenticated" | "unauthenticated" | "error";
+
 interface AuthState {
+  status: AuthStatus;
   user: User | null;
   token: string | null;
-  isLoading: boolean;
-
-  setUser: (user: User | null) => void;
-  setToken: (token: string | null) => void;
-  setLoading: (isLoading: boolean) => void;
-  logOut: () => void;
+  beginBootstrap: () => void;
+  authenticated: (user: User, token: string) => void;
+  unauthenticated: () => void;
+  sessionError: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
+  status: "bootstrapping",
   user: null,
   token: null,
-  isLoading: false,
-
-  setUser: (user) => set({ user }),
-  setToken: (token) => set({ token }),
-  setLoading: (isLoading) => set({ isLoading }),
-  logOut: () => set({ user: null, token: null }),
+  beginBootstrap: () => set({ status: "bootstrapping", user: null, token: null }),
+  authenticated: (user, token) => set({ status: "authenticated", user, token }),
+  unauthenticated: () => set({ status: "unauthenticated", user: null, token: null }),
+  sessionError: () => set({ status: "error", token: null }),
 }));
