@@ -10,6 +10,7 @@ datasource db {
 
 model User{
   id  String  @id @default(uuid())  @db.Uuid
+  firebaseUid String @unique
   name String
   phoneNumber String  @unique
   avatar String?
@@ -22,6 +23,7 @@ model User{
 
 model Message{
   id  String @id @default(uuid()) @db.Uuid
+  clientMessageId String @db.Uuid
   content String
   createdAt DateTime @default(now())
   userId  String  @db.Uuid
@@ -29,14 +31,16 @@ model Message{
   conversationId  String  @db.Uuid
   conversation  Conversation  @relation(fields: [conversationId],references: [id])
   @@index([conversationId,createdAt])
+  @@unique([userId,clientMessageId])
 }
 
 model Conversation{
   id  String  @id @default(uuid())  @db.Uuid
+  directKey String? @unique
   name String?
   messages  Message[]
   users User[]
-  lastMessageAt DateTime @default(now())
+  lastMessageAt DateTime?
   @@index([lastMessageAt])
 }
 
