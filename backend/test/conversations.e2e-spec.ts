@@ -1,18 +1,18 @@
 import { randomUUID } from 'node:crypto';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { FirebaseService } from '../src/firebase/firebase.service';
 import { PrismaService } from '../src/prisma.service';
 import { directKey } from '../src/conversations/direct-key';
 import type { StartDirectResult } from '../src/interfaces/Conversation.interface';
 import { RATE_POLICIES } from '../src/rate-limit/rate-limit.guard';
+import { startHttpApp } from './start-http-app';
 
 describe('Direct conversation contracts (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
   let prisma: PrismaService;
   const [aliceId, bobId, carolId, danId, erinId] = Array.from(
     { length: 5 },
@@ -43,15 +43,8 @@ describe('Direct conversation contracts (e2e)', () => {
       .overrideProvider(FirebaseService)
       .useValue({})
       .compile();
-    app = fixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-    await app.init();
+    app = fixture.createNestApplication<NestExpressApplication>();
+    await startHttpApp(app);
     prisma = app.get(PrismaService);
 
     await prisma.user.createMany({

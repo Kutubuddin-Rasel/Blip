@@ -3,7 +3,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { FirebaseService } from '../src/firebase/firebase.service';
-import { configureBodyLimit } from '../src/http-body-limit';
+import { startHttpApp } from './start-http-app';
 
 describe('HTTP application wiring (e2e)', () => {
   let app: NestExpressApplication;
@@ -25,8 +25,7 @@ describe('HTTP application wiring (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication<NestExpressApplication>();
-    configureBodyLimit(app);
-    await app.init();
+    await startHttpApp(app);
   });
 
   afterAll(async () => {

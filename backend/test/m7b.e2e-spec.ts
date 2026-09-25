@@ -1,21 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import {
-  INestApplication,
-  UnauthorizedException,
-  ValidationPipe,
-} from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
-import cookieParser from 'cookie-parser';
 import request from 'supertest';
-import { App } from 'supertest/types';
 import { io, Socket } from 'socket.io-client';
 import { AppModule } from '../src/app.module';
 import { FirebaseService } from '../src/firebase/firebase.service';
 import { PrismaService } from '../src/prisma.service';
 import { RATE_POLICIES } from '../src/rate-limit/rate-limit.guard';
+import { startHttpApp } from './start-http-app';
 
 describe('M7B blocking and account deletion (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
   let prisma: PrismaService;
   let socket: Socket;
   let secondSocket: Socket;
@@ -91,16 +87,8 @@ describe('M7B blocking and account deletion (e2e)', () => {
         }),
       })
       .compile();
-    app = module.createNestApplication();
-    app.use(cookieParser());
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-    await app.listen(0);
+    app = module.createNestApplication<NestExpressApplication>();
+    await startHttpApp(app);
     prisma = app.get(PrismaService);
     const aa = await signup(first, 'Alice').expect(201);
     const bb = await signup(second, 'Bob').expect(201);

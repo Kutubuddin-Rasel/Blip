@@ -1,22 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import { AddressInfo } from 'node:net';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { io, Socket } from 'socket.io-client';
 import request from 'supertest';
-import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { EventsGateway } from '../src/events/events.gateway';
 import { FirebaseService } from '../src/firebase/firebase.service';
 import { PrismaService } from '../src/prisma.service';
 import type { Message, Page } from '../src/interfaces/Message.interface';
 import { directKey } from '../src/conversations/direct-key';
+import { startHttpApp } from './start-http-app';
 
 type Hint = { conversationId: string; messageId?: string };
 
 describe('Authenticated realtime hints (PostgreSQL and Socket.IO e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
   let prisma: PrismaService;
   let gateway: EventsGateway;
   let url: string;
@@ -82,15 +82,8 @@ describe('Authenticated realtime hints (PostgreSQL and Socket.IO e2e)', () => {
       .overrideProvider(FirebaseService)
       .useValue({})
       .compile();
-    app = fixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-    await app.listen(0, '127.0.0.1');
+    app = fixture.createNestApplication<NestExpressApplication>();
+    await startHttpApp(app);
     const httpServer = app.getHttpServer() as { address(): AddressInfo };
     url = `http://127.0.0.1:${httpServer.address().port}`;
     prisma = app.get(PrismaService);

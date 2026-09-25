@@ -1,17 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
-import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { FirebaseService } from '../src/firebase/firebase.service';
 import { PrismaService } from '../src/prisma.service';
 import { RATE_POLICIES } from '../src/rate-limit/rate-limit.guard';
 import { directKey } from '../src/conversations/direct-key';
+import { startHttpApp } from './start-http-app';
 
 describe('Exact recipient discovery (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
   let prisma: PrismaService;
   let aliceId: string;
   let bobId: string;
@@ -36,8 +36,8 @@ describe('Exact recipient discovery (e2e)', () => {
       .overrideProvider(FirebaseService)
       .useValue({})
       .compile();
-    app = fixture.createNestApplication();
-    await app.init();
+    app = fixture.createNestApplication<NestExpressApplication>();
+    await startHttpApp(app);
     prisma = app.get(PrismaService);
     const alice = await prisma.user.create({
       data: {
@@ -117,16 +117,24 @@ describe('Exact recipient discovery (e2e)', () => {
       .expect(404);
   });
 
-  it('rejects blank, partial, name, noncanonical, and extra search parameters', async () => {
-    await lookup(aliceToken, '').expect(400);
-    await lookup(aliceToken, '+1415').expect(400);
-    await lookup(aliceToken, 'Bob').expect(400);
-    await lookup(aliceToken, '14155552672').expect(400);
+  it.each([
+    ['blank phone', ''],
+    ['partial phone', '+1415'],
+    ['name', 'Bob'],
+    ['noncanonical phone', '14155552672'],
+  ])('rejects %s', async (_label, phoneNumber) => {
+    await lookup(aliceToken, phoneNumber).expect(400);
+  });
+
+  it('rejects extra search parameters', async () => {
     await request(app.getHttpServer())
       .post('/user/discover')
       .set('Authorization', `Bearer ${aliceToken}`)
       .send({ phoneNumber: bobPhone, search: 'Bob' })
       .expect(400);
+  });
+
+  it('does not expose a GET discovery endpoint', async () => {
     await request(app.getHttpServer())
       .get('/user/discover')
       .set('Authorization', `Bearer ${aliceToken}`)

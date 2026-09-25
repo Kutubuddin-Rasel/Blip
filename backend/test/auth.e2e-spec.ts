@@ -1,18 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import {
-  INestApplication,
-  UnauthorizedException,
-  ValidationPipe,
-} from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import cookieParser from 'cookie-parser';
 import request from 'supertest';
-import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { FirebaseService } from '../src/firebase/firebase.service';
 import { PrismaService } from '../src/prisma.service';
 import { RATE_POLICIES } from '../src/rate-limit/rate-limit.guard';
+import { startHttpApp } from './start-http-app';
 
 type Identity = { firebaseUid: string; phoneNumber: string };
 type Session = {
@@ -26,7 +22,7 @@ type Session = {
 };
 
 describe('Blip session lifecycle (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
   let prisma: PrismaService;
   const identities = new Map<string, Identity>();
   const createdUids: string[] = [];
@@ -75,16 +71,8 @@ describe('Blip session lifecycle (e2e)', () => {
         }),
       })
       .compile();
-    app = module.createNestApplication();
-    app.use(cookieParser());
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-    await app.init();
+    app = module.createNestApplication<NestExpressApplication>();
+    await startHttpApp(app);
     prisma = app.get(PrismaService);
   });
 
