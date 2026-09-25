@@ -10,6 +10,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from 'src/prisma.service';
+import { isCanonicalDirect } from 'src/conversations/direct-key';
 
 type AuthenticatedSocket = {
   userId: string;
@@ -110,11 +111,19 @@ export class EventsGateway
     }
     if (typeof conversationId !== 'string' || !uuidV4.test(conversationId))
       return { ok: false };
-    const participant = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, users: { some: { id: data.userId } } },
-      select: { id: true },
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { directKey: true, users: { select: { id: true } } },
     });
-    if (!participant) return { ok: false };
+    if (
+      !conversation ||
+      !isCanonicalDirect(
+        conversation.directKey,
+        conversation.users,
+        data.userId,
+      )
+    )
+      return { ok: false };
     if (
       data.activeConversationId &&
       data.activeConversationId !== conversationId

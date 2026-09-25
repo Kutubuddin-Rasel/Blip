@@ -13,12 +13,14 @@ import { ConversationsService } from './conversations.service';
 import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import type { Request } from 'express';
 import { CreateConversationDto } from './dto/create-conversation.dto';
+import { RateLimit, RateLimitGuard } from 'src/rate-limit/rate-limit.guard';
 
 @Controller('conversations')
 export class ConversationsController {
   constructor(private readonly conversationService: ConversationsService) {}
 
-  @UseGuards(AccessTokenGuard)
+  @RateLimit('start')
+  @UseGuards(AccessTokenGuard, RateLimitGuard)
   @Post('create')
   async create(
     @Req() req: Request,

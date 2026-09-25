@@ -16,7 +16,7 @@ import {
 import { PhoneInputShadcn } from "../ui/phone-input";
 import { Button } from "../ui/button";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "../ui/input-otp";
-import { AxiosError, AxiosResponse } from "axios";
+import { AxiosResponse, isAxiosError } from "axios";
 import { Input } from "../ui/input";
 import { AuthService } from "@/services/auth.service";
 import { useRouter } from "next/navigation";
@@ -71,11 +71,17 @@ export default function PhoneLogin() {
       const { response } = await AuthService.verifyAndLogin(confirmResult, otp);
       await handleAuthSuccess(response);
     } catch (err) {
-      const error = err as AxiosError;
-      if (error.response?.status === 404) {
+      const status = isAxiosError(err) ? err.response?.status : undefined;
+      if (status === 404) {
         setStep("NAME");
+      } else if (status === 429) {
+        setErrorMessage("Too many login attempts. Wait a minute, then try again.");
+      } else if (isAxiosError(err) && !err.response) {
+        setErrorMessage("Network unavailable. Check your connection and try again.");
       } else {
-        setErrorMessage("Could not verify the code or start a session. Try again.");
+        setErrorMessage(status === 401
+          ? "Phone verification expired. Request a new code."
+          : "Could not verify the code or start a session. Try again.");
         try { await signOut(auth); } catch { console.warn("Firebase client sign-out failed after exchange error"); }
       }
     } finally {
@@ -90,16 +96,23 @@ export default function PhoneLogin() {
     try {
       const { response } = await AuthService.register(name);
       await handleAuthSuccess(response);
-    } catch {
-      setErrorMessage("Could not create the account. Try again.");
+    } catch (err) {
+      const status = isAxiosError(err) ? err.response?.status : undefined;
+      setErrorMessage(status === 429
+        ? "Too many registration attempts. Wait a minute, then try again."
+        : isAxiosError(err) && !err.response
+        ? "Network unavailable. Check your connection and try again."
+        : status === 409
+        ? "This phone is already linked to another account."
+        : "Could not create the account. Check your details and try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-zinc-50 dark:bg-zinc-900">
-      <Card className="w-auto shadow-xl border-zinc-200 dark:border-zinc-800">
+    <div className="flex items-center justify-center min-h-screen w-full px-4 bg-zinc-50 dark:bg-zinc-900">
+      <Card className="w-full max-w-sm shadow-xl border-zinc-200 dark:border-zinc-800">
         <CardHeader>
           <CardTitle className="text-xl">
             {step === "NAME" ? "Finish Registration" : "Welcome Back"}
@@ -137,7 +150,7 @@ export default function PhoneLogin() {
               <InputOTP maxLength={6} value={otp} onChange={setOtp}>
                 <InputOTPGroup>
                   {Array.from({ length: 6 }).map((_, index) => (
-                    <InputOTPSlot key={index} index={index} className="w-12 h-12 text-lg" />
+                    <InputOTPSlot key={index} index={index} className="w-9 h-10 text-lg sm:w-12 sm:h-12" />
                   ))}
                 </InputOTPGroup>
               </InputOTP>

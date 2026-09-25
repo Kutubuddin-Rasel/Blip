@@ -55,6 +55,7 @@ function DiscoveryDialog({ accountId }: { accountId: string }) {
     discovery.error.response?.status === 400;
   const rateLimited = discovery.isError && isAxiosError(discovery.error) &&
     discovery.error.response?.status === 429;
+  const networkFailure = discovery.isError && isAxiosError(discovery.error) && !discovery.error.response;
   const found = discovery.data;
 
   return (
@@ -95,7 +96,8 @@ function DiscoveryDialog({ accountId }: { accountId: string }) {
           {discovery.isSuccess && !discovery.data && <p>No recipient found.</p>}
           {sessionFailure && <p>Your session has expired. Sign in again to search.</p>}
           {rateLimited && <p>Too many searches. Please try again in a minute.</p>}
-          {discovery.isError && !sessionFailure && !invalidFromServer && !rateLimited && <p>Search failed. Please try again.</p>}
+          {networkFailure && <p>Network unavailable. Check your connection and try again.</p>}
+          {discovery.isError && !sessionFailure && !invalidFromServer && !rateLimited && !networkFailure && <p>Search is temporarily unavailable. Please try again.</p>}
           {discovery.isSuccess && found && (
             <Button type="button" variant="ghost" className="w-full justify-start gap-3 h-auto p-3" onClick={() => select(found)}>
               <Avatar>

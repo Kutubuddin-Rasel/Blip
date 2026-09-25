@@ -16,7 +16,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex h-screen overflow-hidden">
       <div className="hidden md:flex"><ChatSidebar /></div>
-      <main className="flex-1 flex flex-col min-h-0 bg-white dark:bg-black">{children}</main>
+      <main className="flex-1 flex flex-col min-h-0 min-w-0 bg-white dark:bg-black">{children}</main>
     </div>
   );
 }

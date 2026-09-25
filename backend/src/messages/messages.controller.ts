@@ -14,12 +14,14 @@ import { MessagesService } from './messages.service';
 import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import type { Request } from 'express';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { RateLimit, RateLimitGuard } from 'src/rate-limit/rate-limit.guard';
 
 @Controller('messages')
 export class MessagesController {
   constructor(private readonly messageService: MessagesService) {}
 
-  @UseGuards(AccessTokenGuard)
+  @RateLimit('message')
+  @UseGuards(AccessTokenGuard, RateLimitGuard)
   @Post()
   async create(
     @Req() req: Request,

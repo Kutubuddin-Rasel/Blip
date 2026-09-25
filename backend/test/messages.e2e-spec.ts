@@ -8,14 +8,17 @@ import { AppModule } from '../src/app.module';
 import { EventsGateway } from '../src/events/events.gateway';
 import { FirebaseService } from '../src/firebase/firebase.service';
 import { PrismaService } from '../src/prisma.service';
-import { RedisService } from '../src/redis/redis.service';
 import type { Message, Page } from '../src/interfaces/Message.interface';
+import { directKey } from '../src/conversations/direct-key';
+import { RATE_POLICIES } from '../src/rate-limit/rate-limit.guard';
 
 describe('Ordinary messages and history (PostgreSQL e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let gateway: EventsGateway;
-  const [alice, bob, carol] = [randomUUID(), randomUUID(), randomUUID()];
+  const [alice, bob, carol, dan, erin] = Array.from({ length: 5 }, () =>
+    randomUUID(),
+  );
   const [chat, second, concurrentChat, rollbackChat] = [
     randomUUID(),
     randomUUID(),
@@ -34,8 +37,6 @@ describe('Ordinary messages and history (PostgreSQL e2e)', () => {
     process.env.REFRESHTOKEN_SECRET = 'm4-test-refresh-secret';
     const fixture = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(FirebaseService)
-      .useValue({})
-      .overrideProvider(RedisService)
       .useValue({})
       .compile();
     app = fixture.createNestApplication();
@@ -69,17 +70,30 @@ describe('Ordinary messages and history (PostgreSQL e2e)', () => {
           name: 'M4 Carol',
           phoneNumber: '+14155552903',
         },
+        {
+          id: dan,
+          firebaseUid: dan,
+          name: 'M4 Dan',
+          phoneNumber: '+14155552904',
+        },
+        {
+          id: erin,
+          firebaseUid: erin,
+          name: 'M4 Erin',
+          phoneNumber: '+14155552905',
+        },
       ],
     });
     for (const [id, users] of [
       [chat, [alice, bob]],
       [second, [alice, carol]],
-      [concurrentChat, [alice, bob]],
-      [rollbackChat, [alice, bob]],
+      [concurrentChat, [alice, dan]],
+      [rollbackChat, [alice, erin]],
     ] as Array<[string, string[]]>) {
       await prisma.conversation.create({
         data: {
           id,
+          directKey: directKey(users[0], users[1]),
           users: { connect: users.map((userId) => ({ id: userId })) },
         },
       });
@@ -95,13 +109,13 @@ describe('Ordinary messages and history (PostgreSQL e2e)', () => {
   afterAll(async () => {
     if (prisma) {
       await prisma.message.deleteMany({
-        where: { userId: { in: [alice, bob, carol] } },
+        where: { userId: { in: [alice, bob, carol, dan, erin] } },
       });
       await prisma.conversation.deleteMany({
         where: { id: { in: [chat, second, concurrentChat, rollbackChat] } },
       });
       await prisma.user.deleteMany({
-        where: { id: { in: [alice, bob, carol] } },
+        where: { id: { in: [alice, bob, carol, dan, erin] } },
       });
     }
     await app?.close();
@@ -192,6 +206,85 @@ describe('Ordinary messages and history (PostgreSQL e2e)', () => {
         where: { clientMessageId: body.clientMessageId },
       }),
     ).toBe(0);
+  });
+
+  it('does not expose stored unsupported group rows through message APIs', async () => {
+    const id = randomUUID();
+    await prisma.conversation.create({
+      data: {
+        id,
+        users: { connect: [{ id: alice }, { id: bob }, { id: carol }] },
+      },
+    });
+    try {
+      await send(aliceToken, {
+        conversationId: id,
+        clientMessageId: randomUUID(),
+        content: 'No group send',
+      }).expect(404);
+      await history(aliceToken, id).expect(404);
+    } finally {
+      await prisma.conversation.delete({ where: { id } });
+    }
+  });
+
+  it('bounds distinct writes but lets an exact committed retry recover at the boundary', async () => {
+    const sender = randomUUID();
+    const conversationId = randomUUID();
+    const token = new JwtService().sign(
+      { sub: sender },
+      { secret: process.env.ACCESSTOKEN_SECRET },
+    );
+    await prisma.user.create({
+      data: {
+        id: sender,
+        firebaseUid: sender,
+        name: 'Message limiter',
+        phoneNumber: '+14155552906',
+      },
+    });
+    await prisma.conversation.create({
+      data: {
+        id: conversationId,
+        directKey: directKey(sender, bob),
+        users: { connect: [{ id: sender }, { id: bob }] },
+      },
+    });
+    const firstBody = {
+      conversationId,
+      clientMessageId: randomUUID(),
+      content: 'Recover this send',
+    };
+    try {
+      const first = await send(token, firstBody).expect(201);
+      for (let attempt = 1; attempt < RATE_POLICIES.message.limit; attempt++)
+        await send(token, {
+          conversationId,
+          clientMessageId: randomUUID(),
+          content: `Write ${attempt}`,
+        }).expect(201);
+      const blocked = await send(token, {
+        conversationId,
+        clientMessageId: randomUUID(),
+        content: 'Excess write',
+      }).expect(429);
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+      expect((await send(token, firstBody).expect(201)).body).toEqual(
+        first.body,
+      );
+      expect(await prisma.message.count({ where: { conversationId } })).toBe(
+        RATE_POLICIES.message.limit,
+      );
+      await send(bobToken, {
+        conversationId,
+        clientMessageId: randomUUID(),
+        content: 'Other user',
+      }).expect(201);
+    } finally {
+      await prisma.message.deleteMany({ where: { conversationId } });
+      await prisma.conversation.delete({ where: { id: conversationId } });
+      await prisma.user.delete({ where: { id: sender } });
+    }
   });
 
   it('validates ID, content type, non-whitespace content, and length', async () => {
@@ -291,11 +384,15 @@ describe('Ordinary messages and history (PostgreSQL e2e)', () => {
     );
     const key = randomUUID();
     try {
-      await send(aliceToken, {
+      const failed = await send(aliceToken, {
         conversationId: rollbackChat,
         clientMessageId: key,
         content: 'Rollback',
       }).expect(500);
+      expect(failed.body).toEqual({
+        statusCode: 500,
+        message: 'Internal server error',
+      });
       expect(
         await prisma.message.count({ where: { clientMessageId: key } }),
       ).toBe(0);
@@ -365,8 +462,21 @@ describe('Ordinary messages and history (PostgreSQL e2e)', () => {
     'paginates %i tied-timestamp messages exactly once',
     async (size) => {
       const id = randomUUID();
+      const peer = randomUUID();
+      await prisma.user.create({
+        data: {
+          id: peer,
+          firebaseUid: peer,
+          name: 'History peer',
+          phoneNumber: `+14155553${String(size).padStart(3, '0')}`,
+        },
+      });
       await prisma.conversation.create({
-        data: { id, users: { connect: [{ id: alice }, { id: bob }] } },
+        data: {
+          id,
+          directKey: directKey(alice, peer),
+          users: { connect: [{ id: alice }, { id: peer }] },
+        },
       });
       try {
         const at = new Date('2026-09-10T12:00:00.000Z');
@@ -424,6 +534,7 @@ describe('Ordinary messages and history (PostgreSQL e2e)', () => {
       } finally {
         await prisma.message.deleteMany({ where: { conversationId: id } });
         await prisma.conversation.delete({ where: { id } });
+        await prisma.user.delete({ where: { id: peer } });
       }
     },
   );

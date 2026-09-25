@@ -6,6 +6,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import Link from "next/link";
 
 function NewChatPageContent() {
     const searchParams = useSearchParams();
@@ -17,7 +18,7 @@ function NewChatPageContent() {
         : null;
     
     if(!userId || !recipient || recipient.id !== userId){
-        return (<div>Select a recipient through phone discovery to start a chat.</div>);
+        return (<div className="p-4 text-sm text-zinc-500">Select a recipient through phone discovery to start a chat. <Link href="/chat" className="underline">Back to chats</Link></div>);
     }
 
     return (
@@ -26,5 +27,5 @@ function NewChatPageContent() {
 }
 
 export default function NewChatPage() {
-    return <Suspense fallback={null}><NewChatPageContent /></Suspense>;
+    return <Suspense fallback={<p className="p-4 text-zinc-500">Loading draft…</p>}><NewChatPageContent /></Suspense>;
 }

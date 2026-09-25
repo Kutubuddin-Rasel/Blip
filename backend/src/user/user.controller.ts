@@ -13,7 +13,7 @@ import { UserService } from './user.service';
 import type { Request, Response } from 'express';
 import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import { IsPhoneNumber, Matches } from 'class-validator';
-import { DiscoveryRateLimitGuard } from './discovery-rate-limit.guard';
+import { RateLimit, RateLimitGuard } from 'src/rate-limit/rate-limit.guard';
 
 class DiscoverRecipientBody {
   // Firebase stores the verified phone claim as E.164. Require that same wire form.
@@ -28,7 +28,8 @@ export class UserController {
 
   @Post('discover')
   @HttpCode(200)
-  @UseGuards(AccessTokenGuard, DiscoveryRateLimitGuard)
+  @RateLimit('discovery')
+  @UseGuards(AccessTokenGuard, RateLimitGuard)
   async discover(
     @Req() req: Request,
     @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))

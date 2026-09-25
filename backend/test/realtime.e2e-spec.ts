@@ -10,8 +10,8 @@ import { AppModule } from '../src/app.module';
 import { EventsGateway } from '../src/events/events.gateway';
 import { FirebaseService } from '../src/firebase/firebase.service';
 import { PrismaService } from '../src/prisma.service';
-import { RedisService } from '../src/redis/redis.service';
 import type { Message, Page } from '../src/interfaces/Message.interface';
+import { directKey } from '../src/conversations/direct-key';
 
 type Hint = { conversationId: string; messageId?: string };
 
@@ -81,8 +81,6 @@ describe('Authenticated realtime hints (PostgreSQL and Socket.IO e2e)', () => {
     const fixture = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(FirebaseService)
       .useValue({})
-      .overrideProvider(RedisService)
-      .useValue({})
       .compile();
     app = fixture.createNestApplication();
     app.useGlobalPipes(
@@ -120,7 +118,11 @@ describe('Authenticated realtime hints (PostgreSQL and Socket.IO e2e)', () => {
       ],
     });
     await prisma.conversation.create({
-      data: { id: chat, users: { connect: [{ id: alice }, { id: bob }] } },
+      data: {
+        id: chat,
+        directKey: directKey(alice, bob),
+        users: { connect: [{ id: alice }, { id: bob }] },
+      },
     });
   });
 
@@ -193,6 +195,23 @@ describe('Authenticated realtime hints (PostgreSQL and Socket.IO e2e)', () => {
     ).toBeFalsy();
     participant.disconnect();
     outsider.disconnect();
+  });
+
+  it('rejects stored unsupported group rooms', async () => {
+    const id = randomUUID();
+    await prisma.conversation.create({
+      data: {
+        id,
+        users: { connect: [{ id: alice }, { id: bob }, { id: carol }] },
+      },
+    });
+    const socket = await ready(aliceToken);
+    try {
+      expect(await join(socket, id)).toEqual({ ok: false });
+    } finally {
+      socket.disconnect();
+      await prisma.conversation.delete({ where: { id } });
+    }
   });
 
   it('sends one committed message hint through overlapping user/conversation rooms, never to C', async () => {

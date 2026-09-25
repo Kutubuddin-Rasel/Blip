@@ -12,8 +12,6 @@ import { Prisma } from 'generated/prisma/client';
 import { PrismaService } from 'src/prisma.service';
 import { PasswordService } from './services/password.service';
 import { FirebaseService } from 'src/firebase/firebase.service';
-import { RedisService } from 'src/redis/redis.service';
-import { CacheOptions } from 'src/interfaces/Redis.interface';
 import {
   AuthUser,
   RefreshPayload,
@@ -40,7 +38,6 @@ export class AuthService {
     private readonly passwordService: PasswordService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-    private readonly redisService: RedisService,
     private readonly firebaseService: FirebaseService,
   ) {
     const access = sessionDuration(
@@ -70,17 +67,11 @@ export class AuthService {
       });
     }
     try {
-      const updated = await this.prisma.user.update({
+      return await this.prisma.user.update({
         where: { id: user.id },
         data: { phoneNumber },
         select: publicUserSelect,
       });
-      try {
-        await this.redisService.del(`userId:${user.id}`);
-      } catch {
-        /* Cache invalidation is best effort. */
-      }
-      return updated;
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -241,15 +232,11 @@ export class AuthService {
   }
 
   async getProfile(userId: string): Promise<AuthUser> {
-    const cached = await this.redisService.get<AuthUser>(`userId:${userId}`);
-    if (cached) return cached;
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: publicUserSelect,
     });
     if (!user) throw new UnauthorizedException('User no longer exists');
-    const options: CacheOptions = { ttl: 36000 };
-    await this.redisService.set<AuthUser>(`userId:${userId}`, user, options);
     return user;
   }
 }

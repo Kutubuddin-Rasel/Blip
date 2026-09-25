@@ -17,7 +17,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useInView } from "react-intersection-observer";
-import { toast } from "sonner";
 import { isAxiosError } from "axios";
 import { useLayoutEffect } from "react";
 import ChatInput from "./ChatInput";
@@ -46,7 +45,6 @@ export default function ChatArea(props: ChatAreaProps) {
       if (accountId) void queryClient.invalidateQueries({ queryKey: conversationKeys.list(accountId) });
       router.replace(`/chat/${created.conversation.id}`);
     },
-    onError: () => toast.error("Message failed to send. Please try again."),
   });
 
   const sendMessage = useMutation({
@@ -93,7 +91,7 @@ export default function ChatArea(props: ChatAreaProps) {
   const { ref, inView } = useInView();
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = history;
   useEffect(() => {
-    if (inView && hasNextPage && !isFetchingNextPage) {
+    if (inView && hasNextPage && !isFetchingNextPage && !history.isFetchNextPageError) {
       const element = scrollRef.current;
       if (element) scrollAnchor.current = {
         height: element.scrollHeight,
@@ -102,7 +100,7 @@ export default function ChatArea(props: ChatAreaProps) {
       };
       void fetchNextPage();
     }
-  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage, history.data?.pages.length]);
+  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage, history.data?.pages.length, history.isFetchNextPageError]);
 
   const seen = new Set<string>();
   const messages = (history.data?.pages.flatMap((page) => page.items) ?? [])
@@ -122,11 +120,16 @@ export default function ChatArea(props: ChatAreaProps) {
     }
   }, [conversationId, history.data, messages.length]);
 
-  const sendFailure = sendMessage.isError ? (() => {
-    const status = isAxiosError(sendMessage.error) ? sendMessage.error.response?.status : undefined;
+  const sendError = sendMessage.isError ? sendMessage.error : createConversation.isError ? createConversation.error : null;
+  const sendFailure = sendError ? (() => {
+    const status = isAxiosError(sendError) ? sendError.response?.status : undefined;
     const retryable = status === undefined || status >= 500 || status === 408 || status === 429;
-    return { retryable, message: retryable
-      ? "Send may have succeeded. Retry to confirm without creating a duplicate."
+    return { retryable, message: status === 429
+      ? "Too many sends. Wait a minute, then retry this draft."
+      : isAxiosError(sendError) && !sendError.response
+      ? "Network unavailable. Retry this draft to confirm whether it sent."
+      : retryable
+      ? "Server unavailable. Retry this draft to confirm whether it sent."
       : status === 409 ? "Message ID conflict. Edit the text to start a new send."
       : status === 401 ? "Session expired. Sign in again before sending."
       : status === 404 ? "Conversation is unavailable."
@@ -134,20 +137,23 @@ export default function ChatArea(props: ChatAreaProps) {
   })() : null;
   return (
     <div className="flex-1 flex flex-col h-full min-h-0">
-      <div className="p-4 border-b font-bold flex items-center gap-3">
+      <div className="p-4 border-b font-bold flex items-center gap-3 min-w-0">
         <Link href="/chat" className="md:hidden" aria-label="Back to conversations"><ArrowLeft className="h-5 w-5" /></Link>
-        {props.mode === "draft" ? props.userName : props.conversation.peer.name}
+        <span className="truncate">{props.mode === "draft" ? props.userName : props.conversation.peer.name}</span>
       </div>
       <div ref={scrollRef} className="flex-1 min-h-0 p-4 overflow-y-auto flex flex-col gap-4">
         <div ref={ref} className="h-1 shrink-0" />
         {conversationId && history.isPending && <p className="text-sm text-zinc-500">Loading messages…</p>}
-        {history.isError && (
+        {history.isError && !history.isFetchNextPageError && (
           <p className="text-sm text-zinc-500">
             Could not load messages. <button type="button" className="underline" onClick={() => history.refetch()}>Retry</button>
           </p>
         )}
+        {history.isFetchNextPageError && (
+          <p className="text-sm text-zinc-500">Could not load older messages. <button type="button" className="underline" onClick={() => void history.fetchNextPage()}>Retry</button></p>
+        )}
         {history.isFetchingNextPage && <div className="text-center text-xs">Loading History...</div>}
-        {(!conversationId || !history.isPending) && <ChatList messages={messages} />}
+        {(!conversationId || history.isSuccess || (history.isFetchNextPageError && !!history.data)) && <ChatList messages={messages} />}
       </div>
       <ChatInput
         onSend={(text) => {
@@ -164,7 +170,7 @@ export default function ChatArea(props: ChatAreaProps) {
             return sendMessage.mutateAsync(pendingSend.current);
           }
         }}
-        onEdit={() => { pendingSend.current = null; sendMessage.reset(); }}
+        onEdit={() => { pendingDraft.current = null; pendingSend.current = null; createConversation.reset(); sendMessage.reset(); }}
         disable={!accountId || !token || createConversation.isPending || sendMessage.isPending}
         clearOnSuccess
         failure={sendFailure}

@@ -15,7 +15,7 @@ import {
   StartDirectResult,
 } from 'src/interfaces/Conversation.interface';
 import type { Message } from 'src/interfaces/Message.interface';
-import { directKey } from './direct-key';
+import { directKey, isCanonicalDirect } from './direct-key';
 import { EventsGateway } from 'src/events/events.gateway';
 
 const latestMessageOrder: [{ createdAt: 'desc' }, { id: 'desc' }] = [
@@ -93,15 +93,9 @@ function directPeer(
   currentUserId: string,
   key: string | null,
 ): ConversationPeer | null {
-  if (
-    users.length !== 2 ||
-    !key ||
-    !users.some((user) => user.id === currentUserId)
-  ) {
-    return null;
-  }
-  const peer = users.find((user) => user.id !== currentUserId);
-  return peer && directKey(currentUserId, peer.id) === key ? peer : null;
+  return isCanonicalDirect(key, users, currentUserId)
+    ? (users.find((user) => user.id !== currentUserId) ?? null)
+    : null;
 }
 
 function toSummary(

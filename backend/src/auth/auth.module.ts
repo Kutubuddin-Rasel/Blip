@@ -6,11 +6,10 @@ import { PasswordService } from './services/password.service';
 import { CookieService } from './services/cookie.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { PrismaService } from 'src/prisma.service';
-import { RedisModule } from 'src/redis/redis.module';
 import { FirebaseModule } from 'src/firebase/firebase.module';
 
 @Module({
-  imports: [JwtModule.register({}), RedisModule, FirebaseModule],
+  imports: [JwtModule.register({}), FirebaseModule],
   controllers: [AuthController],
   providers: [
     AuthService,

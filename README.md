@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Blip is a high-performance, scalable real-time chat application designed with a modern architecture. It leverages a hybrid authentication system combining Firebase for SMS verification and a custom backend for session management, ensuring both security and flexibility. The application supports real-time messaging, infinite scroll history, and optimistic UI updates to provide a seamless user experience.
+Blip is a direct-chat application. Firebase verifies phone ownership; Blip manages sessions, durable messages, and real-time delivery through a single Nest instance and PostgreSQL.
 
 ## Technology Stack
 
@@ -17,7 +17,6 @@ Blip is a high-performance, scalable real-time chat application designed with a 
 - **Framework**: NestJS
 - **Database**: PostgreSQL
 - **ORM**: Prisma
-- **Caching/PubSub**: Redis (ioredis)
 - **Real-time**: Socket.io Gateway
 - **Authentication**: Firebase Admin SDK, Passport-JWT
 
@@ -27,15 +26,18 @@ Blip is a high-performance, scalable real-time chat application designed with a 
 - **Real-time Messaging**: Instant message delivery using WebSockets with room-based architecture.
 - **Optimistic UI Updates**: Messages appear in the chat interface instantly before server confirmation to ensure responsiveness.
 - **Infinite Scroll**: Efficiently loads chat history using cursor-based pagination and intersection observers.
-- **Robust Error Handling**: Integrated toast notifications for network or validation errors.
+- **Core Error States**: Login, discovery, and sending show validation, session, rate-limit, and retryable errors.
 - **Draft Mode**: Logic to handle conversation creation seamlessly when the first message is sent.
+
+The controlled beta supports direct conversations only. The participant relation
+remains in PostgreSQL, but group rows are not reachable through chat APIs or
+Socket.IO rooms. Redis and contact syncing are not required.
 
 ## Prerequisites
 
 Ensure the following are installed and running:
 - Node.js 24.21.0 and npm 11.19.0 (pinned in `.nvmrc` and both app manifests)
 - PostgreSQL
-- Redis
 - A Firebase Project (for Phone Authentication)
 
 ## Getting Started
@@ -50,10 +52,10 @@ cp backend/.env.example backend/.env
 Replace every `change-me` and Firebase placeholder. The Firebase private key
 must keep its newlines escaped as `\n` inside the environment variable.
 
-Start PostgreSQL and Redis from the repository root. Compose interpolation
+Start PostgreSQL from the repository root. Compose interpolation
 must explicitly read the backend environment file:
 ```bash
-docker compose --env-file backend/.env up -d postgres redis
+docker compose --env-file backend/.env up -d postgres
 ```
 
 Install, generate the Prisma client, and apply the checked-in migrations:
@@ -69,6 +71,24 @@ Start the server:
 npm run start:dev
 ```
 The backend will run on `http://localhost:3000`.
+
+### Controlled-beta request boundaries
+
+The single Nest instance applies fixed 60-second windows: 10 exact-phone
+discoveries per signed-in user, 20 direct start attempts per signed-in user,
+60 ordinary message sends per signed-in user, and 20 combined signup/signin
+exchanges per network address. Invalid requests also count. At the boundary,
+the API returns HTTP 429 with a safe `Rate limit exceeded` body and a
+`Retry-After` header. A committed message can still be retried with the same
+client message ID, conversation, and content; this returns the original row
+without creating another message. Refresh and logout are not limited. JSON
+and URL-encoded request bodies are limited to 16 KiB.
+
+The auth-exchange network key uses the socket address and deliberately ignores
+untrusted forwarding headers. If deployed behind a proxy, configure a trusted
+client-address path before opening beta access; otherwise clients behind that
+proxy share one auth-exchange bucket. Limits are per process and reset when
+the single instance restarts.
 
 ### 2. Frontend Setup
 

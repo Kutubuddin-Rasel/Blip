@@ -12,7 +12,7 @@ import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { FirebaseService } from '../src/firebase/firebase.service';
 import { PrismaService } from '../src/prisma.service';
-import { RedisService } from '../src/redis/redis.service';
+import { RATE_POLICIES } from '../src/rate-limit/rate-limit.guard';
 
 type Identity = { firebaseUid: string; phoneNumber: string };
 type Session = {
@@ -73,12 +73,6 @@ describe('Blip session lifecycle (e2e)', () => {
             throw new UnauthorizedException('Phone verification failed');
           return Promise.resolve(result);
         }),
-      })
-      .overrideProvider(RedisService)
-      .useValue({
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn().mockResolvedValue(undefined),
-        del: jest.fn().mockResolvedValue(undefined),
       })
       .compile();
     app = module.createNestApplication();
@@ -242,5 +236,29 @@ describe('Blip session lifecycle (e2e)', () => {
       .post('/auth/me')
       .set('Authorization', `Bearer ${newAccess}`)
       .expect(201);
+  });
+
+  it('bounds repeated auth exchange but keeps refresh and logout usable', async () => {
+    const first = identity();
+    const registered = await signup(first.idToken).expect(201);
+    const credential = cookie(registered);
+    let blocked: request.Response | undefined;
+    for (let attempt = 0; attempt < RATE_POLICIES.auth.limit; attempt++) {
+      const response = await signin('unverified-token');
+      if (response.status === 429) {
+        blocked = response;
+        break;
+      }
+      expect(response.status).toBe(401);
+    }
+    expect(blocked?.status).toBe(429);
+    expect(blocked?.body).toEqual({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: 'Rate limit exceeded',
+    });
+    expect(Number(blocked?.headers['retry-after'])).toBeGreaterThan(0);
+    await refresh(credential).expect(201);
+    await logout(credential).expect(201);
   });
 });

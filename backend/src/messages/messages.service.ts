@@ -10,6 +10,7 @@ import { CreateMessageDto } from './dto/create-message.dto';
 import { PrismaService } from 'src/prisma.service';
 import { EventsGateway } from 'src/events/events.gateway';
 import type { Message, Page } from 'src/interfaces/Message.interface';
+import { isCanonicalDirect } from 'src/conversations/direct-key';
 
 const messageSelect = {
   id: true,
@@ -123,10 +124,15 @@ export class MessagesService {
     conversationId: string,
     userId: string,
   ): Promise<void> {
-    const conversation = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, users: { some: { id: userId } } },
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { directKey: true, users: { select: { id: true } } },
     });
-    if (!conversation) throw new NotFoundException('Conversation not found');
+    if (
+      !conversation ||
+      !isCanonicalDirect(conversation.directKey, conversation.users, userId)
+    )
+      throw new NotFoundException('Conversation not found');
   }
 
   async create(dto: CreateMessageDto, userId: string): Promise<Message> {
@@ -135,11 +141,14 @@ export class MessagesService {
     let inserted = false;
     try {
       row = await this.prisma.$transaction(async (tx) => {
-        const conversation = await tx.conversation.findFirst({
-          where: { id: conversationId, users: { some: { id: userId } } },
-          select: { id: true },
+        const conversation = await tx.conversation.findUnique({
+          where: { id: conversationId },
+          select: { directKey: true, users: { select: { id: true } } },
         });
-        if (!conversation)
+        if (
+          !conversation ||
+          !isCanonicalDirect(conversation.directKey, conversation.users, userId)
+        )
           throw new NotFoundException('Conversation not found');
         const message = await tx.message.create({
           data: { conversationId, userId, clientMessageId, content },

@@ -1,13 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { FirebaseService } from '../src/firebase/firebase.service';
-import { RedisService } from '../src/redis/redis.service';
+import { configureBodyLimit } from '../src/http-body-limit';
 
 describe('HTTP application wiring (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
 
   beforeAll(async () => {
     if (!process.env.TEST_DATABASE_URL) {
@@ -23,11 +22,10 @@ describe('HTTP application wiring (e2e)', () => {
     })
       .overrideProvider(FirebaseService)
       .useValue({})
-      .overrideProvider(RedisService)
-      .useValue({})
       .compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
+    configureBodyLimit(app);
     await app.init();
   });
 
@@ -44,5 +42,12 @@ describe('HTTP application wiring (e2e)', () => {
 
   it('rejects an unauthenticated conversation request', () => {
     return request(app.getHttpServer()).get('/conversations').expect(401);
+  });
+
+  it('rejects oversized JSON before auth exchange', () => {
+    return request(app.getHttpServer())
+      .post('/auth/signin')
+      .send({ idToken: 'x'.repeat(17_000) })
+      .expect(413);
   });
 });

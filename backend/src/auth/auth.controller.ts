@@ -13,6 +13,7 @@ import { SignInDto } from 'src/auth/dto/signin.dto';
 import { CookieService } from './services/cookie.service';
 import type { Request, Response } from 'express';
 import { AccessTokenGuard } from './guards/access-token.guard';
+import { RateLimit, RateLimitGuard } from 'src/rate-limit/rate-limit.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -21,6 +22,8 @@ export class AuthController {
     private readonly cookieService: CookieService,
   ) {}
 
+  @RateLimit('auth')
+  @UseGuards(RateLimitGuard)
   @Post('signup')
   async signUp(
     @Body() signUpDto: SignUpDto,
@@ -36,6 +39,8 @@ export class AuthController {
     };
   }
 
+  @RateLimit('auth')
+  @UseGuards(RateLimitGuard)
   @Post('signin')
   async signIn(
     @Body() signInDto: SignInDto,

@@ -7,9 +7,9 @@ import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { FirebaseService } from '../src/firebase/firebase.service';
 import { PrismaService } from '../src/prisma.service';
-import { RedisService } from '../src/redis/redis.service';
 import { directKey } from '../src/conversations/direct-key';
 import type { StartDirectResult } from '../src/interfaces/Conversation.interface';
+import { RATE_POLICIES } from '../src/rate-limit/rate-limit.guard';
 
 describe('Direct conversation contracts (e2e)', () => {
   let app: INestApplication<App>;
@@ -41,8 +41,6 @@ describe('Direct conversation contracts (e2e)', () => {
     process.env.REFRESHTOKEN_SECRET = 'm2-test-refresh-secret';
     const fixture = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(FirebaseService)
-      .useValue({})
-      .overrideProvider(RedisService)
       .useValue({})
       .compile();
     app = fixture.createNestApplication();
@@ -269,6 +267,53 @@ describe('Direct conversation contracts (e2e)', () => {
         (item: { id: string }) => item.id,
       ),
     ).toEqual(expect.arrayContaining([directId, otherId]));
+  });
+
+  it('limits direct starts per user while preserving canonical creation and committed first-message replay', async () => {
+    const sender = randomUUID();
+    const token = new JwtService().sign(
+      { sub: sender },
+      { secret: process.env.ACCESSTOKEN_SECRET },
+    );
+    await prisma.user.create({
+      data: {
+        id: sender,
+        firebaseUid: sender,
+        name: 'Start limiter',
+        phoneNumber: '+14155552706',
+      },
+    });
+    const initial = {
+      recipientId: bobId,
+      initialMessage: 'One first message',
+      clientMessageId: randomUUID(),
+    };
+    let createdId: string | undefined;
+    try {
+      const first = await start(token, initial).expect(201);
+      createdId = (first.body as StartDirectResult).conversation.id;
+      for (let attempt = 1; attempt < RATE_POLICIES.start.limit; attempt++)
+        await start(token, { recipientId: bobId }).expect(201);
+      const blocked = await start(token, { recipientId: bobId }).expect(429);
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+      expect((await start(token, initial).expect(201)).body).toEqual(
+        first.body,
+      );
+      expect(
+        await prisma.conversation.count({
+          where: { directKey: directKey(sender, bobId) },
+        }),
+      ).toBe(1);
+      await start(bobToken, { recipientId: carolId }).expect(201);
+    } finally {
+      if (createdId) {
+        await prisma.message.deleteMany({
+          where: { conversationId: createdId },
+        });
+        await prisma.conversation.delete({ where: { id: createdId } });
+      }
+      await prisma.user.delete({ where: { id: sender } });
+    }
   });
 
   it('returns the same canonical pair in either order without an initial message', async () => {

@@ -6,9 +6,8 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { FirebaseService } from '../src/firebase/firebase.service';
-import { RedisService } from '../src/redis/redis.service';
 import { PrismaService } from '../src/prisma.service';
-import { DISCOVERY_LIMIT } from '../src/user/discovery-rate-limit.guard';
+import { RATE_POLICIES } from '../src/rate-limit/rate-limit.guard';
 import { directKey } from '../src/conversations/direct-key';
 
 describe('Exact recipient discovery (e2e)', () => {
@@ -35,8 +34,6 @@ describe('Exact recipient discovery (e2e)', () => {
     process.env.REFRESHTOKEN_SECRET = 'm1-test-refresh-secret';
     const fixture = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(FirebaseService)
-      .useValue({})
-      .overrideProvider(RedisService)
       .useValue({})
       .compile();
     app = fixture.createNestApplication();
@@ -177,9 +174,17 @@ describe('Exact recipient discovery (e2e)', () => {
   });
 
   it('enforces the configured per-user limit at the boundary', async () => {
-    for (let attempt = 0; attempt < DISCOVERY_LIMIT; attempt++) {
+    await lookup(limiterToken, 'invalid').expect(400);
+    for (let attempt = 1; attempt < RATE_POLICIES.discovery.limit; attempt++) {
       await lookup(limiterToken, unknownPhone).expect(200);
     }
-    await lookup(limiterToken, unknownPhone).expect(429);
+    const blocked = await lookup(limiterToken, unknownPhone).expect(429);
+    expect(blocked.body).toEqual({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: 'Rate limit exceeded',
+    });
+    expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+    await lookup(aliceToken, unknownPhone).expect(200);
   });
 });

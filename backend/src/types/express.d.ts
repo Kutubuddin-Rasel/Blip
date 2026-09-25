@@ -1,7 +1,7 @@
-import { AuthUser } from 'src/interfaces/AuthUser.interface';
+export {};
 
 declare module 'express-serve-static-core' {
   interface Request {
-    user?: AuthUser;
+    user?: { id: string };
   }
 }

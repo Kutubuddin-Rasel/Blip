@@ -18,7 +18,6 @@ model User{
   createdAt DateTime @default(now())
   messages Message[]
   conversations  Conversation[]
-  contacts  Contact[]
 }
 
 model Message{
@@ -42,15 +41,4 @@ model Conversation{
   users User[]
   lastMessageAt DateTime?
   @@index([lastMessageAt])
-}
-
-model Contact{
-  id  String  @id @default(uuid())  @db.Uuid
-  ownerId String  @db.Uuid
-  owner User  @relation(fields: [ownerId],references: [id])
-  name  String
-  phoneNumber String
-  linkedUserId  String? @db.Uuid
-  createdAt DateTime  @default(now())
-  @@unique([ownerId,phoneNumber])
 }
