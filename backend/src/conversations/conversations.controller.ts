@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Req,
   UnauthorizedException,
@@ -47,7 +48,10 @@ export class ConversationsController {
 
   @UseGuards(AccessTokenGuard)
   @Get(':id')
-  async getConversation(@Req() req: Request, @Param('id') id: string) {
+  async getConversation(
+    @Req() req: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
     const userId = req.user?.id;
     if (!userId) {
       throw new UnauthorizedException('User no longer exist');

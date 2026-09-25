@@ -1,9 +1,13 @@
 "use client";
+
 import { UserService } from "@/services/user.service";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { UserDiscoveryResult } from "@/interface/Conversation.interface";
+import { useAuthStore } from "@/store/useAuthStore";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { isValidPhoneNumber } from "react-phone-number-input";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { useInView } from "react-intersection-observer";
+import { useState } from "react";
+import { isAxiosError } from "axios";
 import {
   Dialog,
   DialogContent,
@@ -14,97 +18,100 @@ import {
 } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Loader2, Plus, UserIcon } from "lucide-react";
-import { Input } from "../ui/input";
+import { PhoneInputShadcn } from "../ui/phone-input";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 
-export default function NewChatDialog() {
+function DiscoveryDialog({ accountId }: { accountId: string }) {
   const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [submitted, setSubmitted] = useState(false);
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const discovery = useMutation({
+    mutationKey: ["account", accountId, "discovery"],
+    mutationFn: UserService.discover,
+    gcTime: 0,
+  });
+  const validPhone = isValidPhoneNumber(phoneNumber) && /^\+[1-9]\d{1,14}$/.test(phoneNumber);
 
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useInfiniteQuery({
-      queryKey: ["users", search],
-      queryFn: ({ pageParam }) =>
-        UserService.getAllUsers(pageParam || undefined, search),
-      getNextPageParam: (lastPage) => lastPage.nextCursor,
-      initialPageParam: undefined as string | undefined,
-    });
-
-  const { ref, inView } = useInView();
-
-  useEffect(() => {
-    if (inView && hasNextPage) {
-      fetchNextPage();
-    }
-  }, [inView, hasNextPage, fetchNextPage]);
-
-  const handleUserClick = (userId: string,userName:string) => {
-    setOpen(true);
-    router.push(`/chat/new?userId=${userId}&userName=${encodeURIComponent(userName)}`);
+  const search = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitted(true);
+    if (validPhone && !discovery.isPending) discovery.mutate(phoneNumber);
   };
 
+  const select = (recipient: UserDiscoveryResult) => {
+    queryClient.setQueryData(["account", accountId, "selectedRecipient"], recipient);
+    discovery.reset();
+    setPhoneNumber("");
+    setSubmitted(false);
+    setOpen(false);
+    router.push(`/chat/new?userId=${encodeURIComponent(recipient.id)}`);
+  };
+
+  const sessionFailure = discovery.isError && isAxiosError(discovery.error) &&
+    discovery.error.response?.status === 401;
+  const invalidFromServer = discovery.isError && isAxiosError(discovery.error) &&
+    discovery.error.response?.status === 400;
+  const rateLimited = discovery.isError && isAxiosError(discovery.error) &&
+    discovery.error.response?.status === 429;
+  const found = discovery.data;
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => {
+      setOpen(next);
+      if (!next) {
+        setPhoneNumber("");
+        setSubmitted(false);
+        discovery.reset();
+      }
+    }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
+        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Start new chat">
           <Plus className="h-5 w-5" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-106.5">
         <DialogHeader>
           <DialogTitle>New Chat</DialogTitle>
-          <DialogDescription>
-            Search for a user to start a conversation.
-          </DialogDescription>
+          <DialogDescription>Enter the full phone number of someone you know.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <Input
-            placeholder="Search name or phone...."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+        <form onSubmit={search} className="grid gap-3 py-4">
+          <PhoneInputShadcn
+            aria-label="Recipient phone number"
+            placeholder="+1 555 123 4567"
+            value={phoneNumber}
+            onChange={(value) => {
+              setPhoneNumber(value || "");
+              setSubmitted(false);
+              discovery.reset();
+            }}
           />
-          <div className="flex flex-col gap-2 mt-2 h-75 overflow-y-auto">
-            {isLoading && (
-              <Loader2 className="h-6 w-6 animate-spin mx-auto text-zinc-500" />
-            )}
-            {!isLoading && data?.pages[0].items.length === 0 && (
-              <p className="text-center text-xl text-zinc-900">
-                No users found.
-              </p>
-            )}
-            {data?.pages.map((page, i) => (
-              <div key={i}>
-                {page.items.map((user) => (
-                  <div
-                    key={user.id}
-                    onClick={() => handleUserClick(user.id,user.name)}
-                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
-                  >
-                    <Avatar>
-                      <AvatarImage src={user.avatar || ""}>
-                        <AvatarFallback>
-                          <UserIcon className="h-4 w-4" />
-                        </AvatarFallback>
-                      </AvatarImage>
-                    </Avatar>
-                    <div className="font-medium text-sm">{user.name}</div>
-                    <div className="text-xs text-zinc-500 hidden sm:block">
-                      {user.phoneNumber}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-            <div ref={ref} className="h-4 w-full flex justify-center">
-              {isFetchingNextPage && (
-                <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
-              )}
-            </div>
-          </div>
+          <Button type="submit" disabled={discovery.isPending}>Search by phone</Button>
+        </form>
+        <div aria-live="polite" className="min-h-10">
+          {((submitted && !validPhone) || invalidFromServer) && <p>Enter a complete phone number with country code.</p>}
+          {discovery.isPending && <p className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Searching…</p>}
+          {discovery.isSuccess && !discovery.data && <p>No recipient found.</p>}
+          {sessionFailure && <p>Your session has expired. Sign in again to search.</p>}
+          {rateLimited && <p>Too many searches. Please try again in a minute.</p>}
+          {discovery.isError && !sessionFailure && !invalidFromServer && !rateLimited && <p>Search failed. Please try again.</p>}
+          {discovery.isSuccess && found && (
+            <Button type="button" variant="ghost" className="w-full justify-start gap-3 h-auto p-3" onClick={() => select(found)}>
+              <Avatar>
+                {found.avatar && <AvatarImage src={found.avatar} alt="" />}
+                <AvatarFallback><UserIcon className="h-4 w-4" /></AvatarFallback>
+              </Avatar>
+              <span>{found.name}</span>
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
   );
+}
+
+export default function NewChatDialog() {
+  const accountId = useAuthStore((state) => state.user?.id);
+  return accountId ? <DiscoveryDialog key={accountId} accountId={accountId} /> : null;
 }

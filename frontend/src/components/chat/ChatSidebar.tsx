@@ -1,39 +1,66 @@
 "use client";
 
-import { ChatSidebarProps } from "@/interface/Conversation.interface";
+import { conversationKeys } from "@/lib/conversation-keys";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/useAuthStore";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { UserIcon } from "lucide-react";
+import { LogOut, UserIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ChatService } from "@/services/conversation.service";
 import NewChatDialog from "./NewChatDialog";
+import api from "@/lib/api";
+import { endSession } from "@/lib/session";
+import { auth } from "@/lib/firebase";
+import { signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
-export default function ChatSidebar({
-  initialConversations,
-}: ChatSidebarProps) {
+export default function ChatSidebar({ className }: { className?: string }) {
   const pathName = usePathname();
-  const { data: conversations } = useQuery({
-    queryKey: ["conversations"],
+  const router = useRouter();
+  const accountId = useAuthStore((state) => state.user?.id ?? null);
+  const token = useAuthStore((state) => state.token);
+  const sessionLoading = useAuthStore((state) => state.status !== "authenticated");
+  const logout = async () => {
+    let failed = false;
+    try { await api.post("auth/logout"); } catch { failed = true; }
+    await endSession(true);
+    try { await signOut(auth); } catch { failed = true; }
+    router.replace("/auth/login");
+    if (failed) toast.error("Signed out here, but the server could not confirm session revocation. Retry when online.");
+  };
+  const conversationsQuery = useQuery({
+    queryKey: conversationKeys.list(accountId),
     queryFn: () => ChatService.getConversations(),
-    initialData: initialConversations,
+    enabled: !sessionLoading && !!accountId && !!token,
+    retry: false,
   });
   return (
-    <div className="w-80 border-r h-full flex flex-col bg-zinc-50 dark:bg-zinc-900">
+    <div className={cn("w-80 border-r h-full flex flex-col bg-zinc-50 dark:bg-zinc-900", className)}>
       <div className="p-4 border-b flex items-center justify-between">
-        <div className="p-4 border-b font-bold text-xl">Chats</div>
+        <div className="font-bold text-xl">Chats</div>
         <NewChatDialog />
+        <button type="button" aria-label="Log out" title="Log out" onClick={() => void logout()}><LogOut className="h-5 w-5" /></button>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {conversations.length === 0 ? (
+        {sessionLoading ? (
+          <div className="p-4 text-zinc-500 text-sm">Restoring session…</div>
+        ) : !accountId || !token ? (
+          <div className="p-4 text-zinc-500 text-sm"><Link href="/auth/login">Sign in to see your chats.</Link></div>
+        ) : conversationsQuery.isPending ? (
+          <div className="p-4 text-zinc-500 text-sm">Loading conversations…</div>
+        ) : conversationsQuery.isError ? (
+          <div className="p-4 text-zinc-500 text-sm">
+            Could not load conversations. <button type="button" className="underline" onClick={() => conversationsQuery.refetch()}>Retry</button>
+          </div>
+        ) : conversationsQuery.data.length === 0 ? (
           <div className="p-4 text-zinc-500 text-center text-sm">
             No conversations yet.
           </div>
         ) : (
-          conversations.map((conv) => {
-            const otherUser = conv.users[0];
-            const latestMessage = conv.messages[0];
+          conversationsQuery.data.map((conv) => {
             const isActive = pathName === `/chat/${conv.id}`;
             return (
               <Link
@@ -45,17 +72,22 @@ export default function ChatSidebar({
                 )}
               >
                 <Avatar>
-                  <AvatarImage src={otherUser?.avatar || ""} />
+                  {conv.peer.avatar && <AvatarImage src={conv.peer.avatar} alt="" />}
                   <AvatarFallback>
                     <UserIcon className="h-6 w-6" />
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 overflow-hidden">
-                  <div className="font-medium truncate">{otherUser.name}</div>
+                  <div className="font-medium truncate">{conv.peer.name}</div>
                   <div className="text-xs text-zinc-500 truncate">
-                    {latestMessage.content}
+                    {conv.latestMessage?.content ?? "No messages yet"}
                   </div>
                 </div>
+                {conv.lastMessageAt && (
+                  <time dateTime={conv.lastMessageAt} className="text-xs text-zinc-500 self-start">
+                    {new Date(conv.lastMessageAt).toLocaleDateString()}
+                  </time>
+                )}
               </Link>
             );
           })

@@ -1,16 +1,10 @@
 "use client";
-import { ChatListProps } from "@/interface/Conversation.interface";
+import { Message } from "@/interface/Message.interface";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useEffect, useRef } from "react";
 
-export default function ChatList({ messages }: ChatListProps) {
+export default function ChatList({ messages }: { messages: Message[] }) {
   const { user } = useAuthStore();
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   if (messages.length === 0) {
     return (
@@ -20,11 +14,12 @@ export default function ChatList({ messages }: ChatListProps) {
     );
   }
   return (
-    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       {messages.map((msg) => {
-        const isMe = msg.id === user?.id;
+        const isMe = msg.senderId === user?.id;
         return (
           <div
+            key={msg.id}
             className={cn(
               "max-w-[80%] rounded-2xl px-4 py-2 text-sm shadow-sm",
               isMe
@@ -47,7 +42,6 @@ export default function ChatList({ messages }: ChatListProps) {
           </div>
         );
       })}
-      <div ref={bottomRef} />
     </div>
   );
 }

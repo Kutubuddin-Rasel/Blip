@@ -1,24 +1,33 @@
-export interface CreatedConversation {
+export interface ConversationPeer {
   id: string;
-  name: string | null;
-  lastMessageAt: Date;
+  name: string;
+  avatar: string | null;
 }
 
-export interface Conversation extends CreatedConversation {
-  messages: {
-    id: string;
-    createdAt: Date;
-    content: string;
-    userId: string;
-    conversationId: string;
-  }[];
+export interface MessagePreview {
+  id: string;
+  content: string;
+  createdAt: string;
 }
 
-export interface Conversations extends Conversation {
-  users: {
-    id: string;
-    name: string;
-    avatar: string | null;
-    phoneNumber: string;
-  }[];
+export interface ConversationSummary {
+  id: string;
+  kind: 'direct';
+  peer: ConversationPeer;
+  latestMessage: MessagePreview | null;
+  lastMessageAt: string | null;
+}
+
+export interface ConversationDetail {
+  id: string;
+  kind: 'direct';
+  peer: ConversationPeer;
+  lastMessageAt: string | null;
+}
+
+import type { Message } from './Message.interface';
+
+export interface StartDirectResult {
+  conversation: ConversationDetail;
+  message: Message | null;
 }

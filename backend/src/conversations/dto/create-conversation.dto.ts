@@ -1,24 +1,22 @@
 import {
-  ArrayMinSize,
-  IsArray,
-  IsOptional,
   IsString,
   IsUUID,
-  MinLength,
+  Matches,
+  MaxLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateConversationDto {
-  @IsArray()
-  @IsUUID('4', { each: true })
-  @ArrayMinSize(1)
-  userIds: Array<string>;
+  @IsUUID('4')
+  recipientId: string;
 
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsString()
-  name?: string;
-
-  @IsOptional()
-  @MinLength(1)
-  @IsString()
+  @MaxLength(4000)
+  @Matches(/\S/, { message: 'Initial message must contain text' })
   initialMessage?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsUUID('4')
+  clientMessageId?: string;
 }
