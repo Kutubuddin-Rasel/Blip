@@ -41,7 +41,7 @@ api.interceptors.response.use((response) => response, async (error: AxiosError) 
     );
   }
   catch (refreshError) {
-    if (axios.isAxiosError(refreshError) && refreshError.response?.status === 401) await endSession();
+    if (axios.isAxiosError(refreshError) && refreshError.response?.status === 401) await endSession(false, "Your session ended. Please sign in again.");
     else if (axios.isAxiosError(refreshError) && !refreshError.response) useAuthStore.getState().sessionError();
     throw refreshError;
   }

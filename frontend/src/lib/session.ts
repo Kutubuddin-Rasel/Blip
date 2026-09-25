@@ -37,11 +37,11 @@ export async function installSession(session: RefreshResponse, announce = false,
   if (announce) announceSession(previousId && previousId !== session.user.id ? "session.changed" : "session.established", session.user.id);
 }
 
-export async function endSession(announce = false): Promise<void> {
+export async function endSession(announce = false, notice?: string): Promise<void> {
   const transitionGeneration = generation + 1;
   await clearAccount();
   if (generation !== transitionGeneration) return;
-  useAuthStore.getState().unauthenticated();
+  useAuthStore.getState().unauthenticated(notice);
   if (announce) announceSession("session.ended");
 }
 
@@ -57,8 +57,14 @@ export function listenForSessionEvents(rebootstrap: () => Promise<void>): () => 
   const listener = (event: MessageEvent) => {
     const { type, userId } = event.data ?? {};
     const action = sessionEventAction(type, userId);
-    if (action === "end") void endSession();
-    else if (action === "rebootstrap") {
+    if (action === "end") {
+      void clearAccount().then(async () => {
+        await rebootstrap();
+        if (useAuthStore.getState().status === "unauthenticated") {
+          useAuthStore.getState().unauthenticated("Signed out in another tab.");
+        }
+      });
+    } else if (action === "rebootstrap") {
       void clearAccount().then(rebootstrap);
     }
   };

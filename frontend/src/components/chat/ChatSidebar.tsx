@@ -29,7 +29,7 @@ export default function ChatSidebar({ className }: { className?: string }) {
     await endSession(true);
     try { await signOut(auth); } catch { failed = true; }
     router.replace("/auth/login");
-    if (failed) toast.error("Signed out here, but the server could not confirm session revocation. Retry when online.");
+    if (failed) toast.error("Signed out here, but server revocation was not confirmed. This session may restore on reload.");
   };
   const conversationsQuery = useQuery({
     queryKey: conversationKeys.list(accountId),

@@ -67,11 +67,11 @@ describe('Blip session lifecycle (e2e)', () => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(FirebaseService)
       .useValue({
-        verifyPhoneIdentity: jest.fn(async (token: string) => {
+        verifyPhoneIdentity: jest.fn((token: string) => {
           const result = identities.get(token);
           if (!result)
             throw new UnauthorizedException('Phone verification failed');
-          return result;
+          return Promise.resolve(result);
         }),
       })
       .overrideProvider(RedisService)
@@ -121,6 +121,15 @@ describe('Blip session lifecycle (e2e)', () => {
     });
     expect(stored.id).toBe(body.user.id);
     expect(stored.hashedRefreshToken).toMatch(/^\$argon2id\$/);
+    await expect(
+      prisma.user.create({
+        data: {
+          firebaseUid: first.firebaseUid,
+          phoneNumber: `+1415555${++number}`,
+          name: 'Duplicate UID',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'P2002' });
 
     const nextPhone = `+1415555${++number}`;
     const changedToken = randomUUID();

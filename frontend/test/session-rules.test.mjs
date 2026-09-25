@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { QueryClient } from '@tanstack/react-query';
 import { canRetry, installWithIsolation, retryForSameAccount, sessionEventAction, singleFlight } from '../src/lib/session-rules.ts';
 
 test('one same-tab refresh serves concurrent expired requests and resets after settlement', async () => {
@@ -76,7 +77,19 @@ test('cross-tab notifications carry lifecycle instructions only', () => {
 });
 
 test('account replacement clears old Query state before B is installed', async () => {
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(['account', 'A', 'conversations'], ['private A data']);
   const events = [];
-  await installWithIsolation('A', 'B', async () => { events.push('cancel queries', 'clear cache', 'disconnect A'); }, () => { events.push('install B'); });
-  assert.deepEqual(events, ['cancel queries', 'clear cache', 'disconnect A', 'install B']);
+  await installWithIsolation('A', 'B', async () => {
+    await queryClient.cancelQueries();
+    events.push('cancel queries');
+    queryClient.clear();
+    events.push('clear cache');
+  }, () => {
+    assert.equal(queryClient.getQueryData(['account', 'A', 'conversations']), undefined);
+    events.push('install B');
+    queryClient.setQueryData(['account', 'B', 'conversations'], ['B data']);
+  });
+  assert.deepEqual(events, ['cancel queries', 'clear cache', 'install B']);
+  assert.deepEqual(queryClient.getQueryData(['account', 'B', 'conversations']), ['B data']);
 });

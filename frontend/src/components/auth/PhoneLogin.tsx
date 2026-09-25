@@ -3,6 +3,7 @@ import { LoginResponse } from "@/interface/Auth.interface";
 import { installSession } from "@/lib/session";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
+import { useAuthStore } from "@/store/useAuthStore";
 import { ConfirmationResult } from "firebase/auth";
 import { useEffect, useState } from "react";
 import {
@@ -30,6 +31,7 @@ export default function PhoneLogin() {
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const sessionNotice = useAuthStore((state) => state.notice);
 
   const router = useRouter();
 
@@ -109,6 +111,7 @@ export default function PhoneLogin() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
+          {sessionNotice && <p role="status" className="text-sm text-zinc-600">{sessionNotice}</p>}
           {errorMessage && <p role="alert" className="text-sm text-red-600">{errorMessage}</p>}
           {step === "PHONE" && (
             <div className="flex flex-col gap-4">

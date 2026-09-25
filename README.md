@@ -87,7 +87,7 @@ The frontend will run on `http://localhost:3696` (as per package scripts).
 
 ### Session and origin configuration
 
-Set `NEXT_PUBLIC_FRONTEND_URL` in the backend to the exact browser origin allowed by CORS, and `NEXT_PUBLIC_BACKEND_URL` in the frontend to the backend origin. Browser requests include credentials. Locally, use the same host name (`localhost`) for both ports so the development `SameSite=Lax` refresh cookie is sent. Production requires HTTPS and a same-site frontend/API deployment: the refresh cookie is `HttpOnly`, `Secure`, `SameSite=Strict`, and scoped to `/auth`. M8 must verify the deployed origins and TLS behavior.
+Set `NEXT_PUBLIC_FRONTEND_URL` in the backend to the exact browser origin allowed by CORS, and `NEXT_PUBLIC_BACKEND_URL` in the frontend to the backend origin. Browser requests include credentials. Locally, use the same host name (`localhost`) for both ports so the development `SameSite=Lax` refresh cookie is sent. Set `NODE_ENV=production` for production and serve the frontend/API over HTTPS on the same site: the refresh cookie is then `HttpOnly`, `Secure`, `SameSite=Strict`, and scoped to `/auth`. M8 must verify the deployed origins and TLS behavior.
 
 Firebase verifies the phone once during login or signup. Blip then owns the session. A reload restores it using the refresh cookie even when Firebase client state is signed out. Access JWTs stay in browser memory and expire after `ACCESSTOKEN_EXPIRY` (the example uses 15 minutes); the stable refresh credential expires after `REFRESHTOKEN_EXPIRY` (the example uses 7 days). A new login for the same user replaces the previous refresh session. Logout clears the matching refresh credential, while an already issued access JWT remains valid until its short expiry.
 
