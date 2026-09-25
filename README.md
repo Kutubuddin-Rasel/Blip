@@ -33,7 +33,7 @@ Blip is a high-performance, scalable real-time chat application designed with a 
 ## Prerequisites
 
 Ensure the following are installed and running:
-- Node.js (v18+)
+- Node.js 24.21.0 and npm 11.19.0 (pinned in `.nvmrc` and both app manifests)
 - PostgreSQL
 - Redis
 - A Firebase Project (for Phone Authentication)
@@ -42,29 +42,26 @@ Ensure the following are installed and running:
 
 ### 1. Backend Setup
 
-Navigate to the backend directory:
+Create the local backend configuration from the source-controlled example:
+```bash
+cp backend/.env.example backend/.env
+```
+
+Replace every `change-me` and Firebase placeholder. The Firebase private key
+must keep its newlines escaped as `\n` inside the environment variable.
+
+Start PostgreSQL and Redis from the repository root. Compose interpolation
+must explicitly read the backend environment file:
+```bash
+docker compose --env-file backend/.env up -d postgres redis
+```
+
+Install, generate the Prisma client, and apply the checked-in migrations:
 ```bash
 cd backend
-```
-
-Install dependencies:
-```bash
-npm install
-```
-
-Create a `.env` file in the `backend` directory with the following variables:
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/blip_db"
-REDIS_URL="redis://localhost:6379"
-ACCESSTOKEN_SECRET="your_jwt_secret"
-REFRESHTOKEN_SECRET="your_refresh_secret"
-FIREBASE_SERVICE_ACCOUNT_PATH="./path/to/firebase-admin.json"
-NEXT_PUBLIC_FRONTEND_URL="http://localhost:3000"
-```
-
-Run database migrations:
-```bash
-npx prisma db push
+npm ci
+npx prisma generate
+npx prisma migrate deploy
 ```
 
 Start the server:
@@ -75,32 +72,24 @@ The backend will run on `http://localhost:3000`.
 
 ### 2. Frontend Setup
 
-Navigate to the frontend directory:
+Create the frontend configuration from its example:
+```bash
+cp frontend/.env.example frontend/.env.local
+```
+
+Fill in the Firebase web-app values, then install and start the frontend:
 ```bash
 cd frontend
-```
-
-Install dependencies:
-```bash
-npm install
-```
-
-Create a `.env.local` file in the `frontend` directory:
-```env
-NEXT_PUBLIC_BACKEND_URL="http://localhost:3000"
-NEXT_PUBLIC_FIREBASE_API_KEY="your_api_key"
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="your_project.firebaseapp.com"
-NEXT_PUBLIC_FIREBASE_PROJECT_ID="your_project_id"
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="your_bucket.appspot.com"
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="your_sender_id"
-NEXT_PUBLIC_FIREBASE_APP_ID="your_app_id"
-```
-
-Start the development server:
-```bash
+npm ci
 npm run dev
 ```
 The frontend will run on `http://localhost:3696` (as per package scripts).
+
+### Session and origin configuration
+
+Set `NEXT_PUBLIC_FRONTEND_URL` in the backend to the exact browser origin allowed by CORS, and `NEXT_PUBLIC_BACKEND_URL` in the frontend to the backend origin. Browser requests include credentials. Locally, use the same host name (`localhost`) for both ports so the development `SameSite=Lax` refresh cookie is sent. Production requires HTTPS and a same-site frontend/API deployment: the refresh cookie is `HttpOnly`, `Secure`, `SameSite=Strict`, and scoped to `/auth`. M8 must verify the deployed origins and TLS behavior.
+
+Firebase verifies the phone once during login or signup. Blip then owns the session. A reload restores it using the refresh cookie even when Firebase client state is signed out. Access JWTs stay in browser memory and expire after `ACCESSTOKEN_EXPIRY` (the example uses 15 minutes); the stable refresh credential expires after `REFRESHTOKEN_EXPIRY` (the example uses 7 days). A new login for the same user replaces the previous refresh session. Logout clears the matching refresh credential, while an already issued access JWT remains valid until its short expiry.
 
 ## Architecture Highlights
 
