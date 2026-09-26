@@ -3,12 +3,17 @@
 import ChatArea from "@/components/chat/ChatArea";
 import { UserDiscoveryResult } from "@/interface/Conversation.interface";
 import { useAuthStore } from "@/store/useAuthStore";
+import { useOnline } from "@/hooks/useOnline";
+import { canUseServer } from "@/lib/session-rules";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 
 function NewChatPageContent() {
+    const status = useAuthStore((state) => state.status);
+    const token = useAuthStore((state) => state.token);
+    const online = useOnline();
     const searchParams = useSearchParams();
     const userId = searchParams.get('userId');
     const accountId = useAuthStore((state) => state.user?.id);
@@ -17,6 +22,7 @@ function NewChatPageContent() {
         ? queryClient.getQueryData<UserDiscoveryResult>(["account", accountId, "selectedRecipient"])
         : null;
     
+    if(!canUseServer(status, online, token)) return <div className="p-4 text-sm text-zinc-500">Connect and verify your session to start a chat. <Link href="/chat" className="underline">Back to chats</Link></div>;
     if(!userId || !recipient || recipient.id !== userId){
         return (<div className="p-4 text-sm text-zinc-500">Select a recipient through phone discovery to start a chat. <Link href="/chat" className="underline">Back to chats</Link></div>);
     }

@@ -3,9 +3,12 @@
 import { ChatAreaProps } from "@/interface/Conversation.interface";
 import { MessageResponse } from "@/interface/Message.interface";
 import { conversationKeys } from "@/lib/conversation-keys";
+import { canUseServer } from "@/lib/session-rules";
 import { ChatService } from "@/services/conversation.service";
 import { MessageService } from "@/services/message.service";
 import { useAuthStore } from "@/store/useAuthStore";
+import { selectVisibleAccountId } from "@/store/useAuthStore";
+import { useOnline } from "@/hooks/useOnline";
 import {
   InfiniteData,
   useInfiniteQuery,
@@ -26,14 +29,22 @@ import { toast } from "sonner";
 export default function ChatArea(props: ChatAreaProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const accountId = useAuthStore((state) => state.user?.id ?? null);
+  const accountId = useAuthStore(selectVisibleAccountId);
+  const status = useAuthStore((state) => state.status);
   const token = useAuthStore((state) => state.token);
+  const online = useOnline();
+  const serverReady = canUseServer(status, online, token);
+  const requireServer = () => {
+    const current = useAuthStore.getState();
+    if (!canUseServer(current.status, navigator.onLine, current.token)) throw new Error("Connect to send messages");
+  };
   const conversationId = props.mode === "existing" ? props.conversation.id : null;
   const draftUserId = props.mode === "draft" ? props.draftUserId : null;
   const pendingDraft = useRef<{ recipientId: string; text: string; clientMessageId: string } | null>(null);
   const pendingSend = useRef<{ conversationId: string; text: string; clientMessageId: string } | null>(null);
   const relationship = useMutation({
     mutationFn: async (blocked: boolean) => {
+      requireServer();
       if (props.mode !== "existing") throw new Error("Conversation unavailable");
       if (blocked) await ChatService.blockPeer(props.conversation.peer.id);
       else await ChatService.unblockPeer(props.conversation.peer.id);
@@ -49,6 +60,7 @@ export default function ChatArea(props: ChatAreaProps) {
 
   const createConversation = useMutation({
     mutationFn: ({ text, clientMessageId }: { text: string; clientMessageId: string }) => {
+      requireServer();
       if (!draftUserId) throw new Error("No recipient selected");
       return ChatService.createConversation({ recipientId: draftUserId, initialMessage: text, clientMessageId });
     },
@@ -61,6 +73,7 @@ export default function ChatArea(props: ChatAreaProps) {
 
   const sendMessage = useMutation({
     mutationFn: ({ conversationId, text, clientMessageId }: { conversationId: string; text: string; clientMessageId: string }) => {
+      requireServer();
       return MessageService.sendMessage(conversationId, text, clientMessageId);
     },
     onSuccess: (message) => {
@@ -100,14 +113,15 @@ export default function ChatArea(props: ChatAreaProps) {
     },
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor,
-    enabled: !!accountId && !!token && !!conversationId,
+    enabled: serverReady && !!accountId && !!conversationId,
+    refetchOnMount: "always",
     retry: false,
   });
 
   const { ref, inView } = useInView();
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = history;
   useEffect(() => {
-    if (inView && hasNextPage && !isFetchingNextPage && !history.isFetchNextPageError) {
+    if (serverReady && inView && hasNextPage && !isFetchingNextPage && !history.isFetchNextPageError) {
       const element = scrollRef.current;
       if (element) scrollAnchor.current = {
         height: element.scrollHeight,
@@ -116,7 +130,7 @@ export default function ChatArea(props: ChatAreaProps) {
       };
       void fetchNextPage();
     }
-  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage, history.data?.pages.length, history.isFetchNextPageError]);
+  }, [serverReady, inView, hasNextPage, isFetchingNextPage, fetchNextPage, history.data?.pages.length, history.isFetchNextPageError]);
 
   const seen = new Set<string>();
   const messages = (history.data?.pages.flatMap((page) => page.items) ?? [])
@@ -156,7 +170,7 @@ export default function ChatArea(props: ChatAreaProps) {
       <div className="p-4 border-b font-bold flex items-center gap-3 min-w-0">
         <Link href="/chat" className="md:hidden" aria-label="Back to conversations"><ArrowLeft className="h-5 w-5" /></Link>
         <span className="truncate">{props.mode === "draft" ? props.userName : props.conversation.peer.name}</span>
-        {props.mode === "existing" && !props.conversation.peer.isDeleted && (props.conversation.canMessage || props.conversation.blockedByMe) && (
+        {serverReady && props.mode === "existing" && !props.conversation.peer.isDeleted && (props.conversation.canMessage || props.conversation.blockedByMe) && (
           <button type="button" className="ml-auto text-sm underline shrink-0" disabled={relationship.isPending} onClick={() => {
             if (props.conversation.blockedByMe) relationship.mutate(false);
             else if (window.confirm(`Block ${props.conversation.peer.name}? You will both be unable to message each other until you unblock.`)) relationship.mutate(true);
@@ -165,19 +179,22 @@ export default function ChatArea(props: ChatAreaProps) {
       </div>
       <div ref={scrollRef} className="flex-1 min-h-0 p-4 overflow-y-auto flex flex-col gap-4">
         <div ref={ref} className="h-1 shrink-0" />
-        {conversationId && history.isPending && <p className="text-sm text-zinc-500">Loading messages…</p>}
-        {history.isError && !history.isFetchNextPageError && (
+        {conversationId && history.isPending && <p className="text-sm text-zinc-500">{serverReady ? "Loading messages…" : "No saved messages for this chat. Connect to load them."}</p>}
+        {history.isError && !history.data && serverReady && !history.isFetchNextPageError && (
           <p className="text-sm text-zinc-500">
             Could not load messages. <button type="button" className="underline" onClick={() => history.refetch()}>Retry</button>
           </p>
         )}
-        {history.isFetchNextPageError && (
+        {history.isError && !!history.data && !history.isFetchNextPageError && <p role="status" className="text-xs text-amber-700">Showing saved messages. Could not refresh them.</p>}
+        {history.isFetchNextPageError && serverReady && (
           <p className="text-sm text-zinc-500">Could not load older messages. <button type="button" className="underline" onClick={() => void history.fetchNextPage()}>Retry</button></p>
         )}
-        {history.isFetchingNextPage && <div className="text-center text-xs">Loading History...</div>}
-        {(!conversationId || history.isSuccess || (history.isFetchNextPageError && !!history.data)) && <ChatList messages={messages} />}
+        {!serverReady && hasNextPage && <p className="text-sm text-zinc-500">Connect to load older messages.</p>}
+        {history.isFetchingNextPage && serverReady && <div className="text-center text-xs">Loading history…</div>}
+        {(!conversationId || !!history.data) && <ChatList messages={messages} />}
       </div>
       {props.mode === "existing" && !props.conversation.canMessage && <p className="border-t p-4 text-sm text-zinc-500">Messaging is unavailable.{props.conversation.blockedByMe && " Unblock to send messages again."}</p>}
+      {!serverReady && <p className="border-t px-4 pt-3 text-sm text-zinc-500">Saved history is read-only until your session is verified online.</p>}
       <ChatInput
         onSend={(text) => {
           if (draftUserId) {
@@ -194,7 +211,7 @@ export default function ChatArea(props: ChatAreaProps) {
           }
         }}
         onEdit={() => { pendingDraft.current = null; pendingSend.current = null; createConversation.reset(); sendMessage.reset(); }}
-        disable={!accountId || !token || createConversation.isPending || sendMessage.isPending || relationship.isPending || (props.mode === "existing" && !props.conversation.canMessage)}
+        disable={!accountId || !serverReady || createConversation.isPending || sendMessage.isPending || relationship.isPending || (props.mode === "existing" && !props.conversation.canMessage)}
         clearOnSuccess
         failure={sendFailure}
       />

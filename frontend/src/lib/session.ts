@@ -3,36 +3,49 @@ import { RefreshResponse } from "@/interface/Auth.interface";
 import { useAuthStore } from "@/store/useAuthStore";
 import { installWithIsolation, sessionEventAction } from "./session-rules";
 import { socket } from "./socket";
+import { OfflineCache, wipeLocalAccount } from "./offline-cache";
 
 let queryClient: QueryClient | null = null;
+let offlineCache: OfflineCache | null = null;
 let channel: BroadcastChannel | null = null;
 let generation = 0;
 let cachedAccountId: string | null = null;
 
 export function sessionGeneration(): number { return generation; }
 
-export function bindSessionCache(client: QueryClient): void { queryClient = client; }
+export function bindSessionCache(client: QueryClient): void {
+  if (queryClient !== client) offlineCache = new OfflineCache(client);
+  queryClient = client;
+}
+
+export async function enterCachedMode(): Promise<boolean> {
+  const startedAt = generation;
+  const userId = await offlineCache?.readOnly();
+  if (!userId || generation !== startedAt) return false;
+  cachedAccountId = userId;
+  useAuthStore.getState().cached(userId);
+  return true;
+}
 
 export async function clearAccount(): Promise<void> {
+  const accountId = useAuthStore.getState().user?.id ?? cachedAccountId;
   generation += 1;
   socket.disconnect();
   socket.auth = {};
   useAuthStore.getState().beginBootstrap();
-  if (queryClient) {
-    await queryClient.cancelQueries();
-    queryClient.clear();
-  }
+  await wipeLocalAccount(offlineCache, queryClient, accountId);
   cachedAccountId = null;
 }
 
 export async function installSession(session: RefreshResponse, announce = false, expectedGeneration?: number): Promise<void> {
   if (expectedGeneration !== undefined && expectedGeneration !== generation) throw new Error("Session changed while refresh was in progress");
   if (announce) generation += 1;
-  const previousId = useAuthStore.getState().user?.id;
+  const previousId = useAuthStore.getState().user?.id ?? cachedAccountId;
   let commitGeneration = generation;
   await installWithIsolation(cachedAccountId ?? previousId ?? null, session.user.id,
     async () => { commitGeneration = generation + 1; await clearAccount(); },
-    () => {
+    async () => {
+      await offlineCache?.activate(session.user.id);
       if (generation !== commitGeneration) throw new Error("Session changed during account replacement");
       cachedAccountId = session.user.id;
       useAuthStore.getState().authenticated(session.user, session.accessToken);
@@ -68,7 +81,9 @@ export function listenForSessionEvents(rebootstrap: () => Promise<void>): () => 
         }
       });
     } else if (action === "rebootstrap") {
-      void clearAccount().then(rebootstrap);
+      const currentId = useAuthStore.getState().user?.id ?? useAuthStore.getState().offlineAccountId;
+      if (currentId === userId) void rebootstrap();
+      else void clearAccount().then(rebootstrap);
     }
   };
   channel.addEventListener("message", listener);

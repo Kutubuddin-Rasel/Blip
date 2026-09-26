@@ -1,5 +1,6 @@
 import { socket } from "@/lib/socket";
 import { conversationKeys } from "@/lib/conversation-keys";
+import { useOnline } from "./useOnline";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
@@ -10,6 +11,7 @@ type Hint = { conversationId: string; messageId?: string };
 export function useSocket() {
   const accountId = useAuthStore((state) => state.user?.id ?? null);
   const token = useAuthStore((state) => state.token);
+  const online = useOnline();
   const pathname = usePathname();
   const activeId = /^\/chat\/([0-9a-f-]{36})$/i.exec(pathname)?.[1] ?? null;
   const activeRef = useRef(activeId);
@@ -18,7 +20,7 @@ export function useSocket() {
   activeRef.current = activeId;
 
   useEffect(() => {
-    if (!accountId || !token) {
+    if (!accountId || !token || !online) {
       socket.disconnect();
       return;
     }
@@ -108,7 +110,7 @@ export function useSocket() {
       window.removeEventListener("focus", onFocus);
       socket.disconnect();
     };
-  }, [accountId, token, queryClient]);
+  }, [accountId, token, online, queryClient]);
 
   useEffect(() => {
     void syncRef.current?.().then(() => {

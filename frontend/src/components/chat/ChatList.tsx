@@ -1,10 +1,10 @@
 "use client";
 import { Message } from "@/interface/Message.interface";
 import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/store/useAuthStore";
+import { selectVisibleAccountId, useAuthStore } from "@/store/useAuthStore";
 
 export default function ChatList({ messages }: { messages: Message[] }) {
-  const { user } = useAuthStore();
+  const accountId = useAuthStore(selectVisibleAccountId);
 
   if (messages.length === 0) {
     return (
@@ -16,7 +16,7 @@ export default function ChatList({ messages }: { messages: Message[] }) {
   return (
     <div className="flex flex-col gap-4">
       {messages.map((msg) => {
-        const isMe = msg.senderId === user?.id;
+        const isMe = msg.senderId === accountId;
         return (
           <div
             key={msg.id}

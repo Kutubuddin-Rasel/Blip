@@ -1,7 +1,7 @@
 import { RefreshResponse } from "@/interface/Auth.interface";
 import { useAuthStore } from "@/store/useAuthStore";
 import { retryForSameAccount, singleFlight } from "./session-rules";
-import { endSession, installSession, sessionGeneration } from "./session";
+import { endSession, enterCachedMode, installSession, sessionGeneration } from "./session";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
 type SessionRequest = InternalAxiosRequestConfig & { _retry?: boolean; _originUserId?: string | null };
@@ -43,7 +43,9 @@ api.interceptors.response.use((response) => response, async (error: AxiosError) 
   }
   catch (refreshError) {
     if (axios.isAxiosError(refreshError) && refreshError.response?.status === 401) await endSession(false, "Your session ended. Please sign in again.");
-    else if (axios.isAxiosError(refreshError) && !refreshError.response) useAuthStore.getState().sessionError();
+    else if (axios.isAxiosError(refreshError) && !refreshError.response && useAuthStore.getState().user?.id === originalUserId) {
+      if (!await enterCachedMode() && useAuthStore.getState().user?.id === originalUserId) useAuthStore.getState().sessionError();
+    }
     throw refreshError;
   }
 });

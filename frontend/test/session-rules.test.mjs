@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { QueryClient } from '@tanstack/react-query';
-import { canRetry, installWithIsolation, retryForSameAccount, sessionEventAction, singleFlight } from '../src/lib/session-rules.ts';
+import { canRetry, canUseServer, installWithIsolation, retryForSameAccount, sessionEventAction, singleFlight } from '../src/lib/session-rules.ts';
+
+test('cached and disconnected states cannot use protected server actions', () => {
+  assert.equal(canUseServer('cached', true, null), false);
+  assert.equal(canUseServer('cached', true, 'stale-token'), false);
+  assert.equal(canUseServer('authenticated', false, 'token'), false);
+  assert.equal(canUseServer('authenticated', true, null), false);
+  assert.equal(canUseServer('authenticated', true, 'token'), true);
+});
 
 test('one same-tab refresh serves concurrent expired requests and resets after settlement', async () => {
   let calls = 0;

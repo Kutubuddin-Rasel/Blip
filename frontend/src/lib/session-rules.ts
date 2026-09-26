@@ -2,6 +2,9 @@ export function canRetry(originalUserId: string | null, currentUserId: string | 
   return originalUserId !== null && originalUserId === currentUserId && currentUserId === refreshedUserId;
 }
 
+export const canUseServer = (status: string, online: boolean, token: string | null): boolean =>
+  status === "authenticated" && online && !!token;
+
 export function singleFlight<T>(work: (generation: number) => Promise<T>, generation: () => number): () => Promise<T> {
   let pending: Promise<T> | null = null;
   let pendingGeneration: number | null = null;
@@ -39,8 +42,8 @@ export async function installWithIsolation(
   cachedAccountId: string | null,
   nextAccountId: string,
   clear: () => Promise<void>,
-  install: () => void,
+  install: () => void | Promise<void>,
 ): Promise<void> {
   if (cachedAccountId && cachedAccountId !== nextAccountId) await clear();
-  install();
+  await install();
 }
